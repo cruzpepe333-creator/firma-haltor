@@ -28,7 +28,7 @@
     var j = {}; try { j = await r.json(); } catch (e) { /* vacío */ }
     if (!r.ok) {
       if (j.error === "acceso") { await sb.auth.signOut(); ver("vAcceso"); }
-      if (j.error === "dos_pasos") { await segundoPaso(); }
+      if (j.error === "dos_pasos") { ver("vDos"); }
       throw { codigo: j.error, mensaje: j.mensaje || "Ocurrió un error. Intente de nuevo." };
     }
     return j;
@@ -67,8 +67,10 @@
 
   async function segundoPaso() {
     error("dosErr", ""); $("totp").value = "";
+    var miembro = await sb.rpc("es_equipo");
+    if (!miembro.error && miembro.data === true) return abrirPanel();
     var nivel = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (nivel.data && nivel.data.currentLevel === "aal2") return abrirPanel();
+    if (nivel.data && nivel.data.currentLevel === "aal2") { await sb.auth.signOut(); error("accesoErr", "Su cuenta no pertenece al equipo autorizado."); return ver("vAcceso"); }
     var lista = await sb.auth.mfa.listFactors();
     if (lista.error) { error("accesoErr", "No se pudo consultar la verificación en dos pasos."); return ver("vAcceso"); }
     var verificados = (lista.data.totp || []).filter(function (f) { return f.status === "verified"; });
@@ -95,7 +97,7 @@
       var r = await sb.auth.mfa.challengeAndVerify({ factorId: factor, code: c });
       if (r.error) { error("dosErr", "El código no coincide. Espere a que la app muestre uno nuevo e intente otra vez."); return; }
       $("qr").removeAttribute("src"); $("secreto").textContent = "";
-      await abrirPanel();
+      await segundoPaso();
     } finally { $("verificar").disabled = false; }
   }
   $("salir").addEventListener("click", async function () { await sb.auth.signOut(); $("quien").hidden = true; ver("vAcceso"); });
