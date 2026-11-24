@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src https://khkzwhsbhfydcshzggos.supabase.co; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://khkzwhsbhfydcshzggos.supabase.co; base-uri 'none'; form-action 'none'">
 <title>Firma de contrato · HALTOR</title>
 <link rel="stylesheet" href="estilos.css">
 <link rel="stylesheet" href="extra.css">
@@ -40,7 +40,8 @@
       <div class="row"><span>Asunto</span><span id="dAsunto"></span></div>
       <div class="row"><span>El enlace vence</span><span id="dVence"></span></div>
     </div>
-    <ol class="plan">
+    <div class="notice aviso-rep" id="repetir" hidden><h2>El despacho le pide repetir un paso</h2><p class="m0" id="repetirTxt"></p></div>
+    <ol class="plan" id="plan">
       <li>Confirmar su correo con un código</li>
       <li>Conocer y aceptar el aviso de privacidad</li>
       <li>Fotografiar su identificación y su rostro</li>
@@ -55,7 +56,7 @@
   <!-- 2. Código -->
   <section class="screen" id="s2" hidden>
     <h1>Confirme que es usted</h1>
-    <p class="lead">En el correo que recibió en <b class="marino" id="dCorreo"></b> viene un código de 6 dígitos. Escríbalo aquí.</p>
+    <p class="lead" id="codeLead">En el correo que recibió en <b class="marino" id="dCorreo"></b> viene un código de 6 dígitos. Escríbalo aquí.</p>
     <label class="label" for="code">CÓDIGO DE VERIFICACIÓN</label>
     <input class="code" id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="······">
     <p class="err" id="codeErr" hidden></p>
@@ -109,7 +110,7 @@
     </div>
     <input id="selfieArchivo" type="file" accept="image/*" capture="user" hidden>
     <p class="err" id="idErr" hidden></p>
-    <p class="hint">Procure buena luz y que el texto de la identificación se lea. Las imágenes se guardan en el expediente privado del despacho.</p>
+    <p class="hint" id="idEstado">Procure buena luz y que el texto de la identificación se lea. El despacho revisará estas imágenes antes de aceptar su contrato.</p>
     <div class="spacer"></div>
     <button class="btn" id="go4" type="button" disabled>Continuar</button>
   </section>
@@ -164,11 +165,21 @@
     <p class="lead">No cierre esta página. Tarda unos segundos.</p>
   </section>
 
+  <!-- 7b. Firma recibida, en revisión -->
+  <section class="screen dark" id="s9" hidden>
+    <div class="seal"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#B08D57" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+    <h1 class="mt18">Recibimos su firma.</h1>
+    <p class="lead">El despacho revisará su identificación y su firma. Cuando su contrato quede aceptado, le avisaremos por correo para que descargue su copia con este mismo enlace y su código.</p>
+    <div class="card"><div class="row"><span>Referencia</span><span id="rNumero"></span></div><div class="row"><span>Estado</span><span>En revisión del despacho</span></div></div>
+    <div class="spacer"></div>
+    <p class="foot">HALTOR · contacto@haltor.com.mx</p>
+  </section>
+
   <!-- 8. Listo -->
   <section class="screen dark" id="s8" hidden>
     <div class="seal"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#B08D57" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
-    <h1 class="mt18">Gracias.<br>Su contrato quedó firmado.</h1>
-    <p class="lead">Guarde su copia. El despacho también se la enviará por correo.</p>
+    <h1 class="mt18">Su contrato quedó firmado<br>y aceptado por el despacho.</h1>
+    <p class="lead">Descargue y guarde su copia.</p>
     <a class="btn gold mt22 enlace" id="descarga" href="#" rel="noopener">Descargar mi contrato firmado</a>
     <p class="hint" id="descNota"></p>
     <span class="label">HUELLA DIGITAL DEL DOCUMENTO (SHA-256)</span>

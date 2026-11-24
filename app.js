@@ -4,6 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var token = "", pase = "", datos = null, totalHojas = 0;
   var fotos = { ine_frente: false, ine_reverso: false, rostro: false };
+  var modoDescarga = false, fallos = { ine_frente: 0, ine_reverso: 0, rostro: 0 };
 
   var PASOS = { s2: 1, s3: 2, s4: 3, s4c: 3, s5: 4, s6: 5 };
   function show(id) {
@@ -33,7 +34,7 @@
   }
   // Errores que terminan el proceso sin importar el paso.
   function fatal(e) {
-    var t = { enlace: "Enlace no válido", anulado: "Enlace sustituido", bloqueado: "Enlace bloqueado", vencido: "Enlace vencido", no_disponible: "Contrato no disponible", firmado: "Contrato ya firmado" }[e.codigo];
+    var t = { enlace: "Enlace no válido", anulado: "Enlace sustituido", bloqueado: "Enlace bloqueado", vencido: "Enlace vencido", no_disponible: "Contrato no disponible", firmado: "Contrato ya firmado", en_revision: "Firma recibida" }[e.codigo];
     if (!t) return false;
     try { sessionStorage.removeItem("pase:" + token); } catch (x) { /* sin almacenamiento */ }
     fin(t, e.mensaje); return true;
@@ -48,10 +49,11 @@
   var fmt = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", hour12: false });
 
   function continuar(p) {
-    fotos.ine_frente = p.ine_frente; fotos.ine_reverso = p.ine_reverso; fotos.rostro = p.rostro;
+    fotos.ine_frente = p.ine_frente; fotos.ine_reverso = p.ine_reverso; fotos.rostro = p.rostro; leidoAntes = !!p.lectura;
     marcar("dropF", p.ine_frente); marcar("dropR", p.ine_reverso); marcar("dropS", p.rostro); revisarFotos();
     if (!p.aviso) return show("s3");
-    if (!(p.ine_frente && p.ine_reverso && p.rostro)) return show("s4");
+    if (!(p.ine_frente && p.ine_reverso && p.rostro)) { show("s4"); cargarDetector(); return; }
+    if (p.lectura) { show("s6"); prepararFirma(); return; }
     show("s5"); cargarContrato();
   }
 
@@ -67,11 +69,24 @@
       if (fatal(e)) return;
       return fin("No se pudo abrir", e.mensaje);
     }
-    if (datos.firmado) return fin("Contrato ya firmado", "Este contrato ya fue firmado. Si necesita su copia, pídala a contacto@haltor.com.mx.");
+    if (datos.en_revision) return fin("Firma recibida", "El despacho está revisando su identificación y su firma. Le avisaremos por correo cuando su contrato quede aceptado.");
+    $("dCorreo").textContent = datos.correo;
+    if (datos.firmado) {
+      modoDescarga = true;
+      $("codeLead").textContent = "Su contrato ya fue aceptado por el despacho. Escriba el código de 6 dígitos de su correo para descargar su copia.";
+      $("go2").textContent = "Verificar y descargar";
+      show("s2"); $("top").hidden = true; $("gbar").hidden = true; return;
+    }
+    if (datos.repetir) {
+      var nombres = { ine_frente: "el frente de su identificación", ine_reverso: "el reverso de su identificación", rostro: "la fotografía de su rostro", firma: "su firma" };
+      var lista = (datos.repetir.campos || []).map(function (k) { return nombres[k] || k; }).join(", ");
+      $("repetirTxt").textContent = datos.repetir.motivo + (lista ? " Debe repetir: " + lista + "." : "");
+      $("repetir").hidden = false; $("plan").hidden = true;
+    }
     $("saludo").textContent = "Estimado(a) " + String(datos.nombre).split(" ")[0] + ":";
     $("dNumero").textContent = datos.numero; $("dAsunto").textContent = datos.asunto;
     $("dVence").textContent = fmt.format(new Date(datos.expira)) + " h";
-    $("dCorreo").textContent = datos.correo; $("quien").textContent = String(datos.nombre).toUpperCase();
+    $("quien").textContent = String(datos.nombre).toUpperCase(); $("rNumero").textContent = datos.numero;
     show("s1");
   }
   $("go1").addEventListener("click", function () { show("s2"); $("code").focus(); });
@@ -88,6 +103,12 @@
     try {
       var r = await api({ accion: "verificar", codigo: c });
       pase = r.pase; try { sessionStorage.setItem("pase:" + token, pase); } catch (x) { /* sin almacenamiento */ }
+      if (modoDescarga || r.progreso.firmado) {
+        var d = await api({ accion: "descargar" });
+        $("huella").textContent = d.sha256; $("descarga").href = d.url;
+        $("descNota").textContent = "El enlace de descarga dura 10 minutos. Si vence, vuelva a abrir el enlace de su correo.";
+        show("s8"); return;
+      }
       continuar(r.progreso);
     } catch (e) {
       if (!fatal(e)) { error("codeErr", e.mensaje); $("code").classList.add("bad"); $("code").focus(); }
@@ -105,7 +126,7 @@
     $("go3").disabled = true; error("avisoErr", "");
     try {
       await api({ accion: "aviso", acepta: $("pv1").checked, patrimoniales: $("pv2").checked, datos_sensibles: radio("sens") === "si", transferencias: radio("transf") === "si" });
-      show("s4");
+      show("s4"); cargarDetector();
     } catch (e) {
       if (!fatal(e) && !sesionVencida(e)) error("avisoErr", e.mensaje);
     } finally { revisarAviso(); }
@@ -136,10 +157,71 @@
       im.src = url;
     });
   }
-  async function enviarFoto(tipo, dropId, dataUrl) {
+  // Filtros automáticos: luz, nitidez y presencia de un rostro. Ayudan al cliente y a quien revisa; no sustituyen la revisión.
+  var detector = null, detectorListo = false;
+  function cargarDetector() {
+    if (detector) return; detector = true;
+    var s = document.createElement("script"); s.src = "rostro.js";
+    s.onload = async function () {
+      try {
+        await window.faceapi.nets.tinyFaceDetector.loadFromUri("modelo");
+        var c = document.createElement("canvas"); c.width = 160; c.height = 160;
+        await window.faceapi.detectAllFaces(c, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 160 }));
+        detectorListo = true;
+      } catch (e) { detectorListo = false; }
+    };
+    document.head.appendChild(s);
+  }
+  function imagenDe(dataUrl) { return new Promise(function (ok, mal) { var im = new Image(); im.onload = function () { ok(im); }; im.onerror = mal; im.src = dataUrl; }); }
+  async function analizar(dataUrl, buscarRostro) {
+    var r = { luz: null, nitidez: null, rostros: null };
+    try {
+      var im = await imagenDe(dataUrl), w = 400, h = Math.max(8, Math.round(im.naturalHeight * w / im.naturalWidth));
+      var c = document.createElement("canvas"); c.width = w; c.height = h;
+      var g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(im, 0, 0, w, h);
+      var px = g.getImageData(0, 0, w, h).data, y = new Float32Array(w * h), suma = 0;
+      for (var i = 0; i < w * h; i++) { y[i] = 0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2]; suma += y[i]; }
+      r.luz = suma / (w * h);
+      var n = 0, s1 = 0, s2 = 0;
+      for (var f = 1; f < h - 1; f++) for (var k = 1; k < w - 1; k++) {
+        var p = f * w + k, l = 4 * y[p] - y[p - w] - y[p + w] - y[p - 1] - y[p + 1];
+        s1 += l; s2 += l * l; n++;
+      }
+      r.nitidez = s2 / n - (s1 / n) * (s1 / n);
+      if (buscarRostro && detectorListo) {
+        var det = await Promise.race([
+          window.faceapi.detectAllFaces(im, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.45 })),
+          new Promise(function (ok) { setTimeout(function () { ok(null); }, 12000); })
+        ]);
+        if (det) {
+          var minimo = (buscarRostro === "grande" ? 0.18 : 0.04) * Math.min(im.naturalWidth, im.naturalHeight);
+          r.rostros = det.filter(function (x) { return x.box.width >= minimo; }).length;
+        }
+      }
+    } catch (e) { /* sin análisis: decide la revisión del despacho */ }
+    return r;
+  }
+  function problema(tipo, a) {
+    if (a.luz !== null && a.luz < 40) return "La fotografía salió muy oscura. Busque más luz y tómela de nuevo.";
+    if (a.luz !== null && a.luz > 238) return "La fotografía salió quemada por exceso de luz. Evite el reflejo y tómela de nuevo.";
+    if (a.nitidez !== null && a.nitidez < 30) return "La fotografía salió borrosa. Mantenga firme el teléfono y tómela de nuevo.";
+    if (tipo === "rostro" && a.rostros === 0) return "No se distingue su rostro. Mire de frente a la cámara, sin lentes oscuros ni gorra, y tómela de nuevo.";
+    if (tipo === "rostro" && a.rostros > 1) return "Aparece más de una persona. En la fotografía debe salir solo usted.";
+    if (tipo === "ine_frente" && a.rostros === 0) return "No se distingue la fotografía de su identificación. Verifique que sea el frente de su credencial, completa y bien enfocada.";
+    return "";
+  }
+  async function enviarFoto(tipo, dropId, dataUrl, origen) {
     var d = $(dropId); d.classList.add("subiendo"); error("idErr", "");
     try {
-      await api({ accion: "subir", tipo: tipo, imagen: dataUrl });
+      var a = await analizar(dataUrl, tipo === "rostro" ? "grande" : tipo === "ine_frente" ? "chico" : null);
+      var falla = problema(tipo, a), forzada = false;
+      if (falla) {
+        fallos[tipo]++;
+        if (fallos[tipo] < 3) { error("idErr", falla); return; }
+        forzada = true;
+      }
+      await api({ accion: "subir", tipo: tipo, imagen: dataUrl, auto: { luz: a.luz, nitidez: a.nitidez, rostros: a.rostros, origen: origen || "archivo", forzada: forzada } });
+      if (forzada) error("idErr", "Guardamos esta fotografía, pero el despacho la revisará y puede pedirle que la repita.");
       fotos[tipo] = true; marcar(dropId, true, dataUrl);
     } catch (e) {
       if (!fatal(e) && !sesionVencida(e)) error("idErr", e.mensaje);
@@ -174,13 +256,13 @@
     if (!v.videoWidth) return;
     var url = reducir(v, v.videoWidth, v.videoHeight, 1400);
     apagar(); show("s4");
-    await enviarFoto("rostro", "dropS", url);
+    await enviarFoto("rostro", "dropS", url, "camara");
   });
   window.addEventListener("pagehide", apagar);
-  $("go4").addEventListener("click", function () { show("s5"); cargarContrato(); });
+  $("go4").addEventListener("click", function () { if (datos && datos.repetir && cargado === false && leidoAntes) { show("s6"); prepararFirma(); return; } show("s5"); cargarContrato(); });
 
   // 5: lectura
-  var cargado = false, llegoAlFinal = false;
+  var cargado = false, llegoAlFinal = false, leidoAntes = false;
   async function sha256(bytes) {
     var h = await crypto.subtle.digest("SHA-256", bytes);
     return Array.from(new Uint8Array(h)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
@@ -282,11 +364,9 @@
     if (!f) { error("firmaErr", "Trace su firma antes de continuar."); return; }
     error("firmaErr", ""); show("s7");
     try {
-      var r = await api({ accion: "firmar", acepta: true, nombre: $("nombre").value.trim(), firma: f });
-      $("huella").textContent = r.sha256;
-      $("descarga").href = r.url;
-      $("descNota").textContent = "El enlace de descarga dura 10 minutos. Después, pida su copia al despacho.";
-      show("s8");
+      await api({ accion: "firmar", acepta: true, nombre: $("nombre").value.trim(), firma: f });
+      try { sessionStorage.removeItem("pase:" + token); } catch (x) { /* sin almacenamiento */ }
+      show("s9");
     } catch (e) {
       if (fatal(e) || sesionVencida(e)) return;
       show("s6"); prepararFirma(); error("firmaErr", e.mensaje);
