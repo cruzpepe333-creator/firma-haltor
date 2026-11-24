@@ -3,7 +3,7 @@
   var URL_SB = "https://khkzwhsbhfydcshzggos.supabase.co";
   var LLAVE = "sb_publishable_SasQR2QRp00MfP9oohOAAw_vqalxegT"; // llave pública: solo sirve junto con una sesión del equipo
   var API = URL_SB + "/functions/v1/firma";
-  var sb = window.supabase.createClient(URL_SB, LLAVE, { auth: { persistSession: true, storage: window.sessionStorage, autoRefreshToken: true, detectSessionInUrl: false } });
+  var sb = window.supabase.createClient(URL_SB, LLAVE, { auth: { persistSession: true, storage: window.sessionStorage, autoRefreshToken: true, detectSessionInUrl: true } });
   var $ = function (id) { return document.getElementById(id); };
   var factor = null, contratos = [];
 
@@ -46,6 +46,24 @@
       await segundoPaso();
     } finally { $("entrar").disabled = false; }
   }
+
+  // Acceso sin contraseña: enlace de un solo uso al correo. El segundo paso con el celular se exige igual.
+  $("enlace").addEventListener("click", async function () {
+    error("accesoErr", ""); $("accesoOk").hidden = true;
+    var correo = $("correo").value.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)) { error("accesoErr", "Escriba primero su correo."); return; }
+    $("enlace").disabled = true;
+    try {
+      var r = await sb.auth.signInWithOtp({ email: correo, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } });
+      if (r.error) {
+        var m = String(r.error.message || "");
+        error("accesoErr", /rate|limit|seconds/i.test(m) ? "Ya se envió un enlace hace poco. Espere unos minutos antes de pedir otro." : /not authorized/i.test(m) ? "El servicio de correo aún no puede escribir a esta dirección. Avise al administrador." : "No se pudo enviar el enlace. Verifique el correo e intente más tarde.");
+        return;
+      }
+      $("accesoOk").textContent = "Si el correo pertenece al equipo, en un momento llegará un enlace de acceso. Ábralo en este mismo dispositivo. Revise también la carpeta de correo no deseado.";
+      $("accesoOk").hidden = false;
+    } finally { setTimeout(function () { $("enlace").disabled = false; }, 8000); }
+  });
 
   async function segundoPaso() {
     error("dosErr", ""); $("totp").value = "";
@@ -264,5 +282,13 @@
   }
 
   // Arranque: si hay sesión, se pide o se confirma el segundo paso.
-  sb.auth.getSession().then(function (r) { if (r.data && r.data.session) segundoPaso(); else ver("vAcceso"); });
+  var arrancado = false;
+  function arrancar(sesion) {
+    if (arrancado) return; arrancado = true;
+    if (location.hash && /access_token|error/.test(location.hash)) { try { history.replaceState(null, "", location.pathname); } catch (e) { /* sin historial */ } }
+    if (sesion) segundoPaso(); else ver("vAcceso");
+  }
+  if (/error_description=([^&]+)/.test(location.hash)) error("accesoErr", "El enlace de acceso ya se usó o venció. Pida uno nuevo.");
+  sb.auth.onAuthStateChange(function (evento, sesion) { if (evento === "SIGNED_IN" && sesion) setTimeout(function () { arrancar(sesion); }, 0); });
+  sb.auth.getSession().then(function (r) { arrancar(r.data && r.data.session); });
 })();
