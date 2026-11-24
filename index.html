@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src https://khkzwhsbhfydcshzggos.supabase.co; base-uri 'none'; form-action 'none'">
+<title>Firma de contrato · HALTOR</title>
+<link rel="stylesheet" href="estilos.css">
+<link rel="stylesheet" href="extra.css">
+</head>
+<body>
+<div class="stage">
+<main class="app" aria-live="polite">
+  <div class="top" id="top" hidden>
+    <div class="brand"><img src="logo_marino.png" alt=""><b>HALTOR</b></div>
+    <span class="stepno" id="stepno"></span>
+  </div>
+  <div class="goldbar" id="gbar" hidden><i id="gbarI"></i></div>
+
+  <!-- Carga y errores -->
+  <section class="screen dark" id="s0">
+    <div class="marca"><img src="logo_oro.png" alt=""><div class="nombre">HALTOR</div><div class="sub">ASESORÍA JURÍDICA</div></div>
+    <div class="spin" id="s0spin" aria-hidden="true"></div>
+    <h1 id="s0t" class="mt22">Abriendo su contrato</h1>
+    <p class="lead" id="s0m">Un momento, por favor.</p>
+    <div class="spacer"></div>
+    <p class="hint">¿Necesita ayuda? Escríbanos a contacto@haltor.com.mx</p>
+  </section>
+
+  <!-- 1. Bienvenida -->
+  <section class="screen dark" id="s1" hidden>
+    <div class="marca"><img src="logo_oro.png" alt=""><div class="nombre">HALTOR</div><div class="sub">ASESORÍA JURÍDICA</div></div>
+    <div class="raya"></div>
+    <h1><span id="saludo"></span><br>su contrato está listo para firma.</h1>
+    <p class="lead">Puede leerlo con calma y firmarlo desde aquí, sin acudir a la oficina.</p>
+    <div class="card">
+      <div class="row"><span>Referencia</span><span id="dNumero"></span></div>
+      <div class="row"><span>Asunto</span><span id="dAsunto"></span></div>
+      <div class="row"><span>El enlace vence</span><span id="dVence"></span></div>
+    </div>
+    <ol class="plan">
+      <li>Confirmar su correo con un código</li>
+      <li>Conocer y aceptar el aviso de privacidad</li>
+      <li>Fotografiar su identificación y su rostro</li>
+      <li>Leer el contrato completo</li>
+      <li>Firmar una sola vez</li>
+    </ol>
+    <div class="spacer"></div>
+    <button class="btn gold" id="go1" type="button">Comenzar</button>
+    <p class="hint">Este enlace es personal. Si usted no esperaba este mensaje, escríbanos a contacto@haltor.com.mx</p>
+  </section>
+
+  <!-- 2. Código -->
+  <section class="screen" id="s2" hidden>
+    <h1>Confirme que es usted</h1>
+    <p class="lead">En el correo que recibió en <b class="marino" id="dCorreo"></b> viene un código de 6 dígitos. Escríbalo aquí.</p>
+    <label class="label" for="code">CÓDIGO DE VERIFICACIÓN</label>
+    <input class="code" id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="······">
+    <p class="err" id="codeErr" hidden></p>
+    <p class="hint">Tiene 5 intentos. Cada intento queda registrado.</p>
+    <div class="spacer"></div>
+    <button class="btn" id="go2" type="button">Verificar y continuar</button>
+  </section>
+
+  <!-- 3. Aviso de privacidad -->
+  <section class="screen" id="s3" hidden>
+    <h1>Aviso de privacidad</h1>
+    <p class="lead">Antes de pedirle cualquier fotografía, le informamos qué datos recabamos y para qué.</p>
+    <div class="notice">
+      <h2>Aviso de privacidad simplificado</h2>
+      <p><b>Responsable:</b> Lic. Hanz Eduardo López Torres (HALTOR Asesoría Jurídica), Avenida Antea 1130, Torre B, Oficina 1004, Jurica, C.P. 76100, Santiago de Querétaro, Querétaro.</p>
+      <p><b>Datos que recabaremos en este proceso:</b></p>
+      <ul>
+        <li>Imagen de su identificación oficial por ambos lados</li>
+        <li>Fotografía de su rostro tomada en este momento</li>
+        <li>Su firma trazada en pantalla y el nombre que escriba</li>
+        <li>Datos técnicos de la firma: fecha, hora, dirección de internet y dispositivo</li>
+      </ul>
+      <p><b>Para qué:</b> verificar su identidad, recabar su firma en el contrato y conservar la evidencia de que usted lo firmó.</p>
+      <p><b>Sus opciones:</b> este medio es opcional, puede firmar de forma autógrafa en la oficina. Puede ejercer sus derechos de acceso, rectificación, cancelación y oposición en contacto@haltor.com.mx.</p>
+      <p class="m0">El <b>aviso de privacidad integral</b> se le entrega junto con su contrato y puede pedirlo en cualquier momento al mismo correo.</p>
+    </div>
+    <label class="check"><input type="checkbox" id="pv1"><span>Doy mi <b>consentimiento expreso</b> para que se recaben y traten la imagen de mi identificación, la fotografía de mi rostro, mi firma y los datos técnicos, para las finalidades señaladas.</span></label>
+    <label class="check"><input type="checkbox" id="pv2"><span>Doy mi consentimiento expreso para el tratamiento de mis datos patrimoniales, financieros y fiscales necesarios para mi asunto.</span></label>
+    <fieldset>
+      <legend>Si mi asunto requiere tratar datos sensibles (por ejemplo, de salud):</legend>
+      <div class="opts"><label><input type="radio" name="sens" value="si">Acepto</label><label><input type="radio" name="sens" value="no">No acepto</label></div>
+    </fieldset>
+    <fieldset>
+      <legend>Transferir mis datos a profesionistas externos (peritos, traductores, otros abogados) cuando mi asunto lo requiera:</legend>
+      <div class="opts"><label><input type="radio" name="transf" value="si">Acepto</label><label><input type="radio" name="transf" value="no">No acepto</label></div>
+    </fieldset>
+    <p class="err" id="avisoErr" hidden></p>
+    <div class="spacer"></div>
+    <button class="btn" id="go3" type="button" disabled>Aceptar y continuar</button>
+    <p class="hint centro">Si prefiere no continuar, cierre esta página y le atenderemos en la oficina.</p>
+  </section>
+
+  <!-- 4. Identificación -->
+  <section class="screen" id="s4" hidden>
+    <h1>Su identificación</h1>
+    <p class="lead">Tome una fotografía de su identificación oficial por ambos lados y una de su rostro en este momento.</p>
+    <div class="ids">
+      <label class="drop" for="ineF" id="dropF"><input id="ineF" type="file" accept="image/*" capture="environment"><span>Frente</span><small>Toque para fotografiar</small></label>
+      <label class="drop" for="ineR" id="dropR"><input id="ineR" type="file" accept="image/*" capture="environment"><span>Reverso</span><small>Toque para fotografiar</small></label>
+      <button class="drop wide boton" id="dropS" type="button"><span>Fotografía de su rostro</span><small>Toque para abrir la cámara</small></button>
+    </div>
+    <input id="selfieArchivo" type="file" accept="image/*" capture="user" hidden>
+    <p class="err" id="idErr" hidden></p>
+    <p class="hint">Procure buena luz y que el texto de la identificación se lea. Las imágenes se guardan en el expediente privado del despacho.</p>
+    <div class="spacer"></div>
+    <button class="btn" id="go4" type="button" disabled>Continuar</button>
+  </section>
+
+  <!-- 4b. Cámara -->
+  <section class="screen dark" id="s4c" hidden>
+    <h1>Mire a la cámara</h1>
+    <p class="lead">Coloque su rostro dentro del recuadro, sin lentes oscuros ni gorra.</p>
+    <div class="camara"><video id="video" playsinline autoplay muted></video></div>
+    <div class="spacer"></div>
+    <button class="btn gold" id="tomar" type="button">Tomar fotografía</button>
+    <button class="link claro" id="cancelarCam" type="button">Cancelar</button>
+  </section>
+
+  <!-- 5. Lectura -->
+  <section class="screen pt18" id="s5" hidden>
+    <h1>Lea su contrato</h1>
+    <p class="lead">Deslice hasta el final para poder aceptarlo. <span id="dHojas"></span></p>
+    <div class="viewer-wrap">
+      <div class="prog"><div class="bar"><i id="bar"></i></div><span id="pct">Leído 0%</span></div>
+      <div class="viewer" id="viewer" tabindex="0" aria-label="Contrato"><div class="loading" id="vload">Cargando su contrato…</div></div>
+    </div>
+    <label class="check off" id="c1w"><input type="checkbox" id="c1" disabled><span>Leí el contrato completo y estoy de acuerdo con su contenido.</span></label>
+    <p class="err" id="leerErr" hidden></p>
+    <div class="spacer minimo"></div>
+    <button class="btn" id="go5" type="button" disabled>Continuar a firma</button>
+  </section>
+
+  <!-- 6. Firma -->
+  <section class="screen" id="s6" hidden>
+    <h1>Firme aquí</h1>
+    <p class="lead">Escriba su nombre completo y dibuje su firma con el dedo o el mouse.</p>
+    <label class="label" for="nombre">SU NOMBRE COMPLETO</label>
+    <input class="campo" id="nombre" type="text" autocomplete="name" maxlength="120">
+    <div class="pad" id="pad">
+      <div class="ph" id="padPh">Firme dentro del recuadro</div>
+      <canvas id="sig" aria-label="Recuadro de firma"></canvas>
+      <div class="baseline"></div>
+      <div class="who"><b id="quien"></b><span>EL CLIENTE</span></div>
+    </div>
+    <div class="derecha"><button class="link" id="clear" type="button">Borrar y volver a firmar</button></div>
+    <label class="check"><input type="checkbox" id="c3"><span>Al firmar manifiesto mi voluntad de obligarme en los términos del contrato que leí, y acepto que esta firma electrónica tenga los mismos efectos que mi firma autógrafa.</span></label>
+    <p class="err" id="firmaErr" hidden></p>
+    <div class="spacer"></div>
+    <button class="btn" id="go6" type="button" disabled>Firmar contrato</button>
+  </section>
+
+  <!-- 7. Procesando -->
+  <section class="screen dark" id="s7" hidden>
+    <div class="spin" aria-hidden="true"></div>
+    <h1 class="mt22">Estamos cerrando su contrato</h1>
+    <p class="lead">No cierre esta página. Tarda unos segundos.</p>
+  </section>
+
+  <!-- 8. Listo -->
+  <section class="screen dark" id="s8" hidden>
+    <div class="seal"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#B08D57" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+    <h1 class="mt18">Gracias.<br>Su contrato quedó firmado.</h1>
+    <p class="lead">Guarde su copia. El despacho también se la enviará por correo.</p>
+    <a class="btn gold mt22 enlace" id="descarga" href="#" rel="noopener">Descargar mi contrato firmado</a>
+    <p class="hint" id="descNota"></p>
+    <span class="label">HUELLA DIGITAL DEL DOCUMENTO (SHA-256)</span>
+    <p class="hash" id="huella"></p>
+    <div class="spacer"></div>
+    <p class="foot">HALTOR · contacto@haltor.com.mx</p>
+  </section>
+</main>
+</div>
+<script src="pdf.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
