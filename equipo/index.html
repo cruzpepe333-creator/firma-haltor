@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://khkzwhsbhfydcshzggos.supabase.co; connect-src https://khkzwhsbhfydcshzggos.supabase.co; base-uri 'none'; form-action 'none'">
+<title>HALTOR · Firma digital, equipo</title>
+<link rel="stylesheet" href="equipo.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <img src="logo_oro.png" alt="">
+    <div class="brand"><h1>FIRMA DIGITAL</h1><p>Equipo de HALTOR</p></div>
+    <div class="quien" id="quien" hidden><span id="quienCorreo"></span><button class="lnk" id="salir" type="button">Cerrar sesión</button></div>
+  </div>
+</header>
+
+<main>
+  <!-- Acceso -->
+  <section class="caja angosta" id="vAcceso">
+    <h2>Entrar</h2>
+    <p class="nota">Solo para el equipo autorizado del despacho.</p>
+    <label for="correo">Correo</label><input id="correo" type="email" autocomplete="username">
+    <label for="clave">Contraseña</label><input id="clave" type="password" autocomplete="current-password">
+    <p class="err" id="accesoErr" hidden></p>
+    <button class="btn" id="entrar" type="button">Entrar</button>
+  </section>
+
+  <!-- Segundo paso -->
+  <section class="caja angosta" id="vDos" hidden>
+    <h2>Verificación en dos pasos</h2>
+    <div id="alta" hidden>
+      <p class="nota">Es la primera vez. Abra en su celular una app de autenticación (Google Authenticator, Microsoft Authenticator o similar), elija agregar cuenta y escanee este código.</p>
+      <img id="qr" class="qr" alt="Código para la app de autenticación">
+      <p class="nota">Si no puede escanear, escriba esta clave en la app: <code id="secreto"></code></p>
+    </div>
+    <p class="nota" id="dosNota">Escriba el código de 6 dígitos que muestra su app de autenticación.</p>
+    <label for="totp">Código</label><input id="totp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+    <p class="err" id="dosErr" hidden></p>
+    <button class="btn" id="verificar" type="button">Verificar</button>
+  </section>
+
+  <!-- Panel -->
+  <div id="vPanel" hidden>
+    <section class="caja">
+      <div class="fila-t"><h2>Nuevo contrato</h2></div>
+      <div class="rej">
+        <div><label for="nAsunto">Asunto</label><input id="nAsunto" type="text" maxlength="200" placeholder="Prestación de servicios legales, asunto..."></div>
+        <div><label for="nNombre">Nombre completo del cliente</label><input id="nNombre" type="text" maxlength="120"></div>
+        <div><label for="nCorreo">Correo personal del cliente</label><input id="nCorreo" type="email"></div>
+        <div><label for="nPdf">Contrato en PDF, versión final</label><input id="nPdf" type="file" accept="application/pdf"></div>
+      </div>
+      <p class="nota">El PDF debe llevar la cláusula de firma electrónica y la firma del despacho. Una vez enviado ya no se puede cambiar.</p>
+      <p class="err" id="nErr" hidden></p>
+      <button class="btn" id="nCrear" type="button">Registrar contrato</button>
+    </section>
+
+    <section class="caja">
+      <div class="fila-t"><h2>Contratos</h2><button class="btn sec" id="recargar" type="button">Actualizar</button></div>
+      <p class="err" id="lErr" hidden></p>
+      <div id="lista" class="lista"><p class="nota">Cargando.</p></div>
+    </section>
+  </div>
+</main>
+
+<!-- Ventana de detalle -->
+<div class="velo" id="velo" hidden>
+  <div class="hoja" role="dialog" aria-modal="true" aria-labelledby="dTitulo">
+    <div class="fila-t"><h2 id="dTitulo"></h2><button class="lnk" id="dCerrar" type="button">Cerrar</button></div>
+    <div id="dCuerpo"></div>
+  </div>
+</div>
+
+<script src="supabase.js"></script>
+<script src="equipo.js"></script>
+</body>
+</html>
