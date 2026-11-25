@@ -7,7 +7,7 @@
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://khkzwhsbhfydcshzggos.supabase.co; connect-src https://khkzwhsbhfydcshzggos.supabase.co; base-uri 'none'; form-action 'none'">
 <title>HALTOR · Firma digital, equipo</title>
-<link rel="stylesheet" href="equipo.css?v=3">
+<link rel="stylesheet" href="equipo.css?v=5">
 </head>
 <body>
 <header class="top">
@@ -66,6 +66,14 @@
       <p class="err" id="lErr" hidden></p>
       <div id="lista" class="lista"><p class="nota">Cargando.</p></div>
     </section>
+
+    <section class="caja">
+      <div class="fila-t"><h2>Equipo y correo</h2></div>
+      <p class="nota" id="correoEstado">Consultando.</p>
+      <div class="acc"><button class="btn claro" id="probarCorreo" type="button">Enviarme un correo de prueba</button><button class="btn claro" id="cambiarClave" type="button">Definir o cambiar mi contraseña</button></div>
+      <p class="err" id="eqErr" hidden></p><p class="okmsg" id="eqOk" hidden></p>
+      <div id="miembros" class="lista"></div>
+    </section>
   </div>
 </main>
 
@@ -78,6 +86,6 @@
 </div>
 
 <script src="supabase.js"></script>
-<script src="equipo.js?v=4"></script>
+<script src="equipo.js?v=5"></script>
 </body>
 </html>

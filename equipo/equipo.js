@@ -5,7 +5,7 @@
   var API = URL_SB + "/functions/v1/firma";
   var sb = window.supabase.createClient(URL_SB, LLAVE, { auth: { persistSession: true, storage: window.sessionStorage, autoRefreshToken: true, detectSessionInUrl: true } });
   var $ = function (id) { return document.getElementById(id); };
-  var factor = null, contratos = [];
+  var factor = null, contratos = [], llegoPorEnlace = /access_token=/.test(location.hash || "");
 
   function el(tag, cls, texto) { var n = document.createElement(tag); if (cls) n.className = cls; if (texto !== undefined && texto !== null) n.textContent = String(texto); return n; }
   function error(id, t) { var e = $(id); e.textContent = t || ""; e.hidden = !t; }
@@ -105,7 +105,69 @@
   async function abrirPanel() {
     var u = (await sb.auth.getUser()).data.user;
     $("quienCorreo").textContent = u ? u.email : ""; $("quien").hidden = false;
-    ver("vPanel"); await cargar();
+    ver("vPanel"); await cargar(); cargarEquipo();
+    if (llegoPorEnlace) { llegoPorEnlace = false; ventanaClave(true); }
+  }
+
+  // ---------- Equipo, correo y contraseña
+  async function cargarEquipo() {
+    try {
+      var r = await api({ accion: "equipo_miembros" });
+      $("correoEstado").textContent = r.correo_listo ? "El correo del despacho está conectado: al aprobar un contrato se envía solo al cliente, con copia al equipo." : "El correo del despacho aún no está conectado. Mientras tanto, los avisos se envían desde su propio correo con el botón que aparece en cada paso.";
+      var M = $("miembros"); M.textContent = "";
+      (r.miembros || []).forEach(function (m) {
+        var it = el("div", "item"); var t = el("div", "t");
+        t.appendChild(el("b", null, m.nombre || m.correo)); t.appendChild(el("span", null, m.correo + " · " + (m.rol === "titular" ? "Titular" : "Colaborador")));
+        it.appendChild(t);
+        var a = el("div", "acc");
+        a.appendChild(el("span", "pill " + (m.ultimo_acceso ? "ok" : m.cuenta ? "warn" : "idle"), m.ultimo_acceso ? "Ya entró, " + fecha(m.ultimo_acceso) : m.cuenta ? "Cuenta creada, aún no entra" : "Sin cuenta"));
+        var b = el("button", "btn claro", "Generar enlace de acceso"); b.type = "button";
+        b.addEventListener("click", function () { invitar(m, b); }); a.appendChild(b);
+        it.appendChild(a); M.appendChild(it);
+      });
+    } catch (e) { $("correoEstado").textContent = e.mensaje || "No se pudo consultar el equipo."; }
+  }
+  async function invitar(m, b) {
+    b.disabled = true; error("eqErr", "");
+    try {
+      var r = await api({ accion: "equipo_invitar", correo: m.correo });
+      var D = abrir("Acceso para " + (m.nombre || m.correo));
+      D.appendChild(el("p", "nota", "Este enlace es de un solo uso y vence en una hora. Mándelo solo a " + m.correo + ". Al abrirlo, la app le pedirá definir su propia contraseña. Nadie más la conocerá."));
+      var caja = el("div", "env"); caja.appendChild(el("code", null, r.enlace)); D.appendChild(caja);
+      var texto = "Hola:\n\nEste es tu acceso a la app de firma digital de HALTOR. Ábrelo antes de una hora, es de un solo uso:\n" + r.enlace + "\n\nAl entrar te pedirá definir tu contraseña. Después entras en " + location.origin + location.pathname + " con tu correo y esa contraseña.";
+      var acc = el("div", "acc");
+      var a = el("a", "btn", "Abrir mi correo con el mensaje listo"); a.href = correoA({ cliente_correo: m.correo }, "Tu acceso a la app de firma de HALTOR", texto); acc.appendChild(a);
+      var cp = el("button", "btn claro", "Copiar mensaje"); cp.type = "button"; cp.addEventListener("click", function () { copiar(texto, cp); }); acc.appendChild(cp);
+      D.appendChild(acc); cargarEquipo();
+    } catch (e) { error("eqErr", e.mensaje); }
+    finally { b.disabled = false; }
+  }
+  $("probarCorreo").addEventListener("click", async function () {
+    var b = $("probarCorreo"); b.disabled = true; error("eqErr", ""); $("eqOk").hidden = true;
+    try { await api({ accion: "equipo_probar_correo" }); $("eqOk").textContent = "Correo de prueba enviado. Revise su bandeja y la carpeta de no deseado."; $("eqOk").hidden = false; }
+    catch (e) { error("eqErr", "No se pudo enviar: " + e.mensaje); }
+    finally { b.disabled = false; }
+  });
+  $("cambiarClave").addEventListener("click", function () { ventanaClave(false); });
+  function ventanaClave(primera) {
+    var D = abrir(primera ? "Defina su contraseña" : "Cambiar mi contraseña");
+    D.appendChild(el("p", "nota", (primera ? "Bienvenido. Para entrar las próximas veces necesita una contraseña propia. " : "") + "Mínimo 12 caracteres, con mayúsculas, minúsculas, números y un símbolo. No use una que ya tenga en otro sitio."));
+    var l1 = el("label", null, "Contraseña nueva"); l1.htmlFor = "cl1"; D.appendChild(l1);
+    var c1 = el("input"); c1.type = "password"; c1.id = "cl1"; c1.autocomplete = "new-password"; D.appendChild(c1);
+    var l2 = el("label", null, "Repítala"); l2.htmlFor = "cl2"; D.appendChild(l2);
+    var c2 = el("input"); c2.type = "password"; c2.id = "cl2"; c2.autocomplete = "new-password"; D.appendChild(c2);
+    var e = el("p", "err"); e.hidden = true; D.appendChild(e);
+    var b = el("button", "btn", "Guardar contraseña"); b.type = "button"; D.appendChild(b);
+    b.addEventListener("click", async function () {
+      e.hidden = true;
+      if (c1.value !== c2.value) { e.textContent = "Las dos contraseñas no coinciden."; e.hidden = false; return; }
+      b.disabled = true;
+      try {
+        await api({ accion: "cuenta_clave", clave: c1.value }); c1.value = ""; c2.value = "";
+        var D2 = abrir("Contraseña guardada"); D2.appendChild(el("p", "okmsg", "Listo. La próxima vez entre con su correo y esta contraseña."));
+      } catch (x) { e.textContent = x.mensaje; e.hidden = false; }
+      finally { b.disabled = false; }
+    });
   }
 
   // ---------- Lista
@@ -238,8 +300,16 @@
       ba.addEventListener("click", async function () {
         ba.disabled = true; br.disabled = true; ba.textContent = "Cerrando el contrato";
         try {
-          await api({ accion: "equipo_aprobar", contrato_id: c.id }); await cargar();
-          var D2 = aviso("Su contrato con HALTOR quedó firmado", "Estimado(a) " + c.cliente_nombre + ":\n\nRevisamos su identificación y su firma, y su contrato quedó aceptado.\n\nPara descargar su copia, abra el mismo enlace que le enviamos y escriba el mismo código de verificación. Podrá hacerlo durante los próximos 30 días.\n\nHALTOR", "Contrato aprobado y cerrado.");
+          var ra = await api({ accion: "equipo_aprobar", contrato_id: c.id }); await cargar();
+          var enviado = ra.correo && ra.correo.enviado;
+          if (enviado) {
+            var D3 = abrir(c.numero);
+            D3.appendChild(el("p", "okmsg", "Contrato aprobado y cerrado."));
+            D3.appendChild(el("p", "nota", "Se envió al cliente (" + ra.correo.para + ") su contrato firmado con la huella, con copia a: " + (ra.correo.cc || []).join(", ") + " y a la cuenta del despacho."));
+            var bx = el("button", "btn claro", "Descargar el contrato firmado"); bx.type = "button"; bx.addEventListener("click", function () { bajar(c, "firmado", bx); }); D3.appendChild(bx);
+            return;
+          }
+          var D2 = aviso("Su contrato con HALTOR quedó firmado", "Estimado(a) " + c.cliente_nombre + ":\n\nRevisamos su identificación y su firma, y su contrato quedó aceptado.\n\nPara descargar su copia, abra el mismo enlace que le enviamos y escriba el mismo código de verificación. Podrá hacerlo durante los próximos 30 días.\n\nHALTOR", "Contrato aprobado y cerrado. El correo automático no salió" + (ra.correo && ra.correo.error ? " (" + ra.correo.error + ")" : "") + ". Avise al cliente desde su correo y adjunte el PDF.");
           var bd = el("button", "btn claro", "Descargar el contrato firmado"); bd.type = "button"; bd.addEventListener("click", function () { bajar(c, "firmado", bd); }); D2.appendChild(document.createTextNode(" ")); D2.appendChild(bd);
         } catch (e) { ea.textContent = e.mensaje; ea.hidden = false; ba.disabled = false; br.disabled = false; ba.textContent = "Aprobar y cerrar el contrato"; }
       });
@@ -264,7 +334,16 @@
     D.appendChild(dl);
     var acc = el("div", "acc");
     var bo = el("button", "btn claro", "Descargar PDF original"); bo.type = "button"; bo.addEventListener("click", function () { bajar(c, "original", bo); }); acc.appendChild(bo);
-    if (c.estado === "firmado") { var bf = el("button", "btn", "Descargar PDF firmado"); bf.type = "button"; bf.addEventListener("click", function () { bajar(c, "firmado", bf); }); acc.appendChild(bf); }
+    if (c.estado === "firmado") {
+      var bf = el("button", "btn", "Descargar PDF firmado"); bf.type = "button"; bf.addEventListener("click", function () { bajar(c, "firmado", bf); }); acc.appendChild(bf);
+      var bm = el("button", "btn claro", "Reenviar correo al cliente y al equipo"); bm.type = "button";
+      bm.addEventListener("click", async function () {
+        bm.disabled = true;
+        try { var rr = await api({ accion: "equipo_reenviar_correo", contrato_id: c.id }); bm.textContent = rr.correo && rr.correo.enviado ? "Correo enviado" : "No salió: " + ((rr.correo && rr.correo.error) || "error"); }
+        catch (x) { bm.textContent = x.mensaje; }
+      });
+      acc.appendChild(bm);
+    }
     if (c.estado !== "firmado" && c.estado !== "cancelado") {
       var bc = el("button", "btn rojo", "Cancelar contrato"); bc.type = "button"; var paso = 0;
       bc.addEventListener("click", async function () {
