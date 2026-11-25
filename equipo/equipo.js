@@ -2,7 +2,8 @@
   "use strict";
   var URL_SB = "https://khkzwhsbhfydcshzggos.supabase.co";
   var LLAVE = "sb_publishable_SasQR2QRp00MfP9oohOAAw_vqalxegT"; // llave pública: solo sirve junto con una sesión del equipo
-  var API = URL_SB + "/functions/v1/firma";
+  var API = URL_SB + "/functions/v1/firma", DESPACHO = URL_SB + "/functions/v1/despacho";
+  var desp = { firmante: "", soy_firmante: false, mi_firma: null };
   var sb = window.supabase.createClient(URL_SB, LLAVE, { auth: { persistSession: true, storage: window.sessionStorage, autoRefreshToken: true, detectSessionInUrl: true } });
   var $ = function (id) { return document.getElementById(id); };
   var factor = null, contratos = [], llegoPorEnlace = /access_token=/.test(location.hash || "");
@@ -19,11 +20,11 @@
     firmado_cliente: { t: "Firmó el cliente, falta su revisión", c: "warn" }, firmado: { t: "Firmado y aceptado", c: "ok" }, cancelado: { t: "Cancelado", c: "err" }
   };
 
-  async function api(cuerpo) {
+  async function api(cuerpo, destino) {
     var s = (await sb.auth.getSession()).data.session;
     if (!s) { ver("vAcceso"); throw { mensaje: "Su sesión venció. Entre de nuevo." }; }
     var r;
-    try { r = await fetch(API, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + s.access_token }, body: JSON.stringify(cuerpo), cache: "no-store" }); }
+    try { r = await fetch(destino || API, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + s.access_token }, body: JSON.stringify(cuerpo), cache: "no-store" }); }
     catch (e) { throw { mensaje: "No hay conexión. Revise su internet." }; }
     var j = {}; try { j = await r.json(); } catch (e) { /* vacío */ }
     if (!r.ok) {
@@ -105,7 +106,9 @@
   async function abrirPanel() {
     var u = (await sb.auth.getUser()).data.user;
     $("quienCorreo").textContent = u ? u.email : ""; $("quien").hidden = false;
-    ver("vPanel"); await cargar(); cargarEquipo();
+    ver("vPanel");
+    try { desp = await api({ accion: "estado" }, DESPACHO); } catch (e) { desp = { firmante: "", soy_firmante: false, mi_firma: null }; }
+    await cargar(); cargarEquipo(); pintarFirma();
     if (llegoPorEnlace) { llegoPorEnlace = false; ventanaClave(true); }
   }
 
@@ -174,7 +177,7 @@
   $("recargar").addEventListener("click", cargar);
   async function cargar() {
     error("lErr", "");
-    var r = await sb.from("contratos").select("id,numero,asunto,cliente_nombre,cliente_correo,estado,pdf_sha256,firmado_sha256,creado_en,enviado_en,firmado_en,actualizado_en").order("creado_en", { ascending: false }).limit(200);
+    var r = await sb.from("contratos").select("id,numero,asunto,cliente_nombre,cliente_correo,estado,pdf_sha256,firmado_sha256,autorizado_por,autorizado_en,creado_en,enviado_en,firmado_en,actualizado_en").order("creado_en", { ascending: false }).limit(200);
     if (r.error) { error("lErr", "No se pudo leer la lista. Si acaba de entrar, cierre sesión y vuelva a entrar."); return; }
     contratos = r.data || []; pintar();
   }
@@ -188,13 +191,86 @@
       it.appendChild(t);
       var a = el("div", "acc"); a.appendChild(el("span", "pill " + e.c, e.t));
       var boton = function (txt, cls, fn) { var b = el("button", "btn " + cls, txt); b.type = "button"; b.addEventListener("click", function () { fn(c, b); }); a.appendChild(b); };
-      if (c.estado === "borrador") boton("Enviar al cliente", "", enviar);
+      var falta = c.estado === "borrador" && desp.firmante && !c.autorizado_en;
+      if (falta) { a.firstChild.textContent = "Falta la autorización de quien firma por el despacho"; a.firstChild.className = "pill warn"; if (desp.soy_firmante) boton("Autorizar y firmar", "", autorizar); }
+      else if (c.estado === "borrador") { if (c.autorizado_en) a.firstChild.textContent = "Autorizado, listo para enviar"; boton("Enviar al cliente", "", enviar); }
       if (c.estado === "enviado") boton("Generar enlace nuevo", "claro", enviar);
       if (c.estado === "firmado_cliente") boton("Revisar", "sec", revisar);
       if (c.estado === "firmado") boton("Descargar firmado", "", function (c, b) { bajar(c, "firmado", b); });
       boton("Detalle", "claro", detalle);
       it.appendChild(a); L.appendChild(it);
     });
+  }
+
+  // ---------- Autorización y firma del despacho
+  function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (x) { return ("0" + x.toString(16)).slice(-2); }).join(""); }
+  function pintarFirma() {
+    var z = $("miFirma"); z.textContent = "";
+    if (!desp.firmante) return;
+    if (!desp.soy_firmante) { z.appendChild(el("p", "nota", "Firma por el despacho: " + desp.firmante + ". Ningún contrato puede enviarse al cliente sin que esa cuenta lo autorice.")); return; }
+    z.appendChild(el("p", "nota", "Usted firma por el despacho. Su firma solo se estampa cuando usted autoriza un contrato desde esta cuenta."));
+    if (desp.mi_firma) { var i = el("img", "mifirma"); i.alt = "Su firma registrada"; i.src = desp.mi_firma; z.appendChild(i); }
+    var l = el("label", null, "Cambiar mi firma (imagen PNG de fondo transparente)"); var f = el("input"); f.type = "file"; f.accept = "image/png"; l.htmlFor = "nuevaFirma"; f.id = "nuevaFirma"; z.appendChild(l); z.appendChild(f);
+    f.addEventListener("change", async function () {
+      if (!f.files[0]) return; error("eqErr", "");
+      try { await api({ accion: "mi_firma_cambiar", png: await aBase64(f.files[0]) }, DESPACHO); desp = await api({ accion: "estado" }, DESPACHO); pintarFirma(); }
+      catch (e) { error("eqErr", e.mensaje || "No se pudo guardar la firma."); }
+    });
+  }
+  async function autorizar(c, b) {
+    b.disabled = true;
+    try {
+      if (!desp.mi_firma) throw { mensaje: "Su firma todavía no está registrada. Súbala en la sección Equipo y correo." };
+      var r = await api({ accion: "equipo_enlace", contrato_id: c.id, cual: "original" });
+      var resp = await fetch(r.url, { cache: "no-store" }); if (!resp.ok) throw { mensaje: "No se pudo abrir el PDF." };
+      var bytes = new Uint8Array(await resp.arrayBuffer());
+      var huella = hex(await crypto.subtle.digest("SHA-256", bytes));
+      if (huella !== c.pdf_sha256) throw { mensaje: "El PDF no coincide con el registrado. Actualice la lista e intente de nuevo." };
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "../pdf.worker.min.js";
+      var doc = await window.pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+      var D = abrir("Autorizar " + c.numero);
+      D.appendChild(el("p", "nota", c.asunto + " · " + c.cliente_nombre + ". Lea el contrato completo. Después elija la hoja de firmas y toque el lugar exacto donde va su firma. Al autorizar, el PDF queda fijo y ya puede enviarse al cliente."));
+      var bo = el("button", "btn claro", "Abrir el PDF completo para leerlo"); bo.type = "button"; bo.addEventListener("click", function () { window.open(r.url, "_blank", "noopener"); }); D.appendChild(bo);
+      var ctl = el("div", "rej");
+      var d1 = el("div"); var l1 = el("label", null, "Hoja donde va la firma"); var sel = el("select"); sel.id = "auHoja"; l1.htmlFor = "auHoja";
+      for (var n = 1; n <= doc.numPages; n++) { var o = el("option", null, "Hoja " + n + " de " + doc.numPages); o.value = n; sel.appendChild(o); }
+      sel.value = doc.numPages; d1.appendChild(l1); d1.appendChild(sel); ctl.appendChild(d1);
+      var d2 = el("div"); var l2 = el("label", null, "Tamaño de la firma"); var tam = el("input"); tam.type = "range"; tam.min = "8"; tam.max = "45"; tam.value = "22"; tam.id = "auTam"; l2.htmlFor = "auTam"; d2.appendChild(l2); d2.appendChild(tam); ctl.appendChild(d2);
+      D.appendChild(ctl);
+      var marco = el("div", "pliego"); var lienzo = el("canvas"); var sello = el("img", "sello"); sello.alt = ""; sello.src = desp.mi_firma; sello.hidden = true; marco.appendChild(lienzo); marco.appendChild(sello); D.appendChild(marco);
+      var pos = null, turno = 0;
+      function colocar() { if (!pos) { sello.hidden = true; return; } sello.hidden = false; sello.style.left = (pos.cx * 100) + "%"; sello.style.top = (pos.cy * 100) + "%"; sello.style.width = tam.value + "%"; }
+      async function hoja() {
+        var mio = ++turno; pos = null; colocar(); bf.disabled = true;
+        var pg = await doc.getPage(Number(sel.value)); if (mio !== turno) return;
+        var base = pg.getViewport({ scale: 1 }), vp = pg.getViewport({ scale: Math.min(2, 1100 / base.width) });
+        lienzo.width = vp.width; lienzo.height = vp.height;
+        await pg.render({ canvasContext: lienzo.getContext("2d"), viewport: vp }).promise;
+      }
+      marco.addEventListener("click", function (ev) {
+        var q = lienzo.getBoundingClientRect(); if (!q.width) return;
+        pos = { cx: Math.min(0.98, Math.max(0.02, (ev.clientX - q.left) / q.width)), cy: Math.min(0.98, Math.max(0.02, (ev.clientY - q.top) / q.height)) };
+        colocar(); bf.disabled = !si.checked;
+      });
+      tam.addEventListener("input", colocar); sel.addEventListener("change", hoja);
+      var lc = el("label", "casilla"); var si = el("input"); si.type = "checkbox"; lc.appendChild(si); lc.appendChild(document.createTextNode(" Leí el contrato completo y autorizo que se estampe mi firma en el lugar marcado."));
+      D.appendChild(lc);
+      var er = el("p", "err"); er.hidden = true; D.appendChild(er);
+      var bf = el("button", "btn", "Autorizar y firmar"); bf.type = "button"; bf.disabled = true; D.appendChild(bf);
+      si.addEventListener("change", function () { bf.disabled = !(si.checked && pos); });
+      bf.addEventListener("click", async function () {
+        bf.disabled = true; er.hidden = true;
+        try {
+          await api({ accion: "autorizar", contrato_id: c.id, pagina: Number(sel.value), cx: pos.cx, cy: pos.cy, ancho: Number(tam.value) / 100, sha256_visto: huella }, DESPACHO);
+          await cargar();
+          var D2 = abrir(c.numero + " autorizado");
+          D2.appendChild(el("p", "okmsg", "Su firma quedó estampada y el contrato está listo para enviarse al cliente. La versión sin firma se conserva en el expediente."));
+          var bv = el("button", "btn claro", "Ver el PDF ya firmado por el despacho"); bv.type = "button"; bv.addEventListener("click", function () { bajar(c, "original", bv); }); D2.appendChild(bv);
+        } catch (e) { er.textContent = e.mensaje || "No se pudo autorizar."; er.hidden = false; bf.disabled = false; }
+      });
+      await hoja();
+    } catch (e) { error("lErr", e.mensaje || "No se pudo abrir el contrato."); }
+    finally { b.disabled = false; }
   }
 
   // ---------- Nuevo contrato

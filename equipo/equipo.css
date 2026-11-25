@@ -64,3 +64,11 @@ textarea{min-height:74px;resize:vertical}
 .qr{width:200px;height:200px;display:block;margin:10px auto;background:#fff;padding:8px;border:1px solid var(--line);border-radius:8px}
 .dos{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 @media (max-width:640px){.dos{grid-template-columns:1fr}.log li{grid-template-columns:1fr;gap:0}.quien{align-items:flex-start}}
+
+.pliego{position:relative;margin:14px 0;border:1px solid var(--line);cursor:crosshair;line-height:0;background:#fff}
+.pliego canvas{width:100%;height:auto;display:block}
+.sello{position:absolute;transform:translate(-50%,-50%);pointer-events:none;height:auto;outline:1px dashed #b8923a}
+.mifirma{display:block;max-width:180px;max-height:140px;margin:8px 0;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px}
+.casilla{display:flex;gap:8px;align-items:flex-start;margin:12px 0;font-weight:400}
+.casilla input{width:auto;margin-top:3px}
+select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}

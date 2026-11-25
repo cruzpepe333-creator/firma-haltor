@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://khkzwhsbhfydcshzggos.supabase.co; connect-src https://khkzwhsbhfydcshzggos.supabase.co; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob: https://khkzwhsbhfydcshzggos.supabase.co; connect-src 'self' https://khkzwhsbhfydcshzggos.supabase.co; base-uri 'none'; form-action 'none'">
 <title>HALTOR · Firma digital, equipo</title>
-<link rel="stylesheet" href="equipo.css?v=5">
+<link rel="stylesheet" href="equipo.css?v=6">
 </head>
 <body>
 <header class="top">
@@ -56,7 +56,7 @@
         <div><label for="nCorreo">Correo personal del cliente</label><input id="nCorreo" type="email"></div>
         <div><label for="nPdf">Contrato en PDF, versión final</label><input id="nPdf" type="file" accept="application/pdf"></div>
       </div>
-      <p class="nota">El PDF debe llevar la cláusula de firma electrónica y la firma del despacho. Una vez enviado ya no se puede cambiar.</p>
+      <p class="nota">El PDF debe llevar la cláusula de firma electrónica y el espacio para la firma del despacho, sin firmar. Quien firma por el despacho lo autoriza desde su cuenta y ahí se estampa su firma. Una vez autorizado ya no se puede cambiar.</p>
       <p class="err" id="nErr" hidden></p>
       <button class="btn" id="nCrear" type="button">Registrar contrato</button>
     </section>
@@ -72,6 +72,7 @@
       <p class="nota" id="correoEstado">Consultando.</p>
       <div class="acc"><button class="btn claro" id="probarCorreo" type="button">Enviarme un correo de prueba</button><button class="btn claro" id="cambiarClave" type="button">Definir o cambiar mi contraseña</button></div>
       <p class="err" id="eqErr" hidden></p><p class="okmsg" id="eqOk" hidden></p>
+      <div id="miFirma"></div>
       <div id="miembros" class="lista"></div>
     </section>
   </div>
@@ -85,7 +86,8 @@
   </div>
 </div>
 
+<script src="../pdf.min.js"></script>
 <script src="supabase.js"></script>
-<script src="equipo.js?v=5"></script>
+<script src="equipo.js?v=6"></script>
 </body>
 </html>
