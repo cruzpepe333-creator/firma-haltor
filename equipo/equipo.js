@@ -200,24 +200,25 @@
   $("recargar").addEventListener("click", cargar);
   async function cargar() {
     error("lErr", "");
-    var r = await sb.from("contratos").select("id,numero,asunto,cliente_nombre,cliente_correo,estado,pdf_sha256,firmado_sha256,autorizado_por,autorizado_en,creado_en,enviado_en,firmado_en,actualizado_en").order("creado_en", { ascending: false }).limit(200);
+    var r = await sb.from("contratos").select("id,numero,asunto,cliente_nombre,cliente_correo,estado,pdf_sha256,firmado_sha256,autorizado_por,autorizado_en,firmantes,creado_en,enviado_en,firmado_en,actualizado_en").order("creado_en", { ascending: false }).limit(200);
     if (r.error) { error("lErr", "No se pudo leer la lista. Si acaba de entrar, cierre sesión y vuelva a entrar."); return; }
     contratos = r.data || []; pintar();
   }
+  function varios(c) { return Array.isArray(c.firmantes) && c.firmantes.length > 0; }
   function pintar() {
     var L = $("lista"); L.textContent = "";
     if (!contratos.length) { L.appendChild(el("p", "nota", "Todavía no hay contratos. Registre el primero con el formulario de arriba.")); return; }
     contratos.forEach(function (c) {
       var e = ESTADOS[c.estado] || { t: c.estado, c: "idle" };
       var it = el("div", "item" + (c.estado === "firmado_cliente" ? " atencion" : ""));
-      var t = el("div", "t"); t.appendChild(el("b", null, c.asunto)); t.appendChild(el("span", null, c.numero + " · " + c.cliente_nombre + " · " + c.cliente_correo));
+      var t = el("div", "t"); t.appendChild(el("b", null, c.asunto)); t.appendChild(el("span", null, c.numero + " · " + c.cliente_nombre + " · " + (varios(c) ? "Firman: " + c.firmantes.map(function (f) { return f.nombre; }).join(" y ") : c.cliente_correo)));
       it.appendChild(t);
       var a = el("div", "acc"); a.appendChild(el("span", "pill " + e.c, e.t));
       var boton = function (txt, cls, fn) { var b = el("button", "btn " + cls, txt); b.type = "button"; b.addEventListener("click", function () { fn(c, b); }); a.appendChild(b); };
       var falta = c.estado === "borrador" && desp.firmante && !c.autorizado_en;
       if (falta) { a.firstChild.textContent = "Falta la autorización de quien firma por el despacho"; a.firstChild.className = "pill warn"; if (desp.soy_firmante) boton("Autorizar y firmar", "", autorizar); }
       else if (c.estado === "borrador") { if (c.autorizado_en) a.firstChild.textContent = "Autorizado, listo para enviar"; boton("Enviar al cliente", "", enviar); }
-      if (c.estado === "enviado") boton("Generar enlace nuevo", "claro", enviar);
+      if (c.estado === "enviado") { if (varios(c)) boton("Ver avance de firmas", "sec", revisar); boton(varios(c) ? "Enlaces nuevos para quien falta" : "Generar enlace nuevo", "claro", enviar); }
       if (c.estado === "firmado_cliente") boton("Revisar", "sec", revisar);
       if (c.estado === "firmado") boton("Descargar firmado", "", function (c, b) { bajar(c, "firmado", b); });
       boton("Detalle", "claro", detalle);
@@ -240,6 +241,25 @@
       catch (e) { error("eqErr", e.mensaje || "No se pudo guardar la firma."); }
     });
   }
+  function sinAcentos(t) { return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9 ]/g, " ").replace(/\s+/g, " ").trim(); }
+  // Busca el nombre en el PDF, de la última hoja hacia atrás, y devuelve dónde está su renglón más bajo (el del bloque de firmas).
+  async function ubicarNombre(doc, nombre) {
+    var meta = sinAcentos(nombre); if (meta.length < 5) return null;
+    for (var n = doc.numPages; n >= 1; n--) {
+      var pg = await doc.getPage(n), vp = pg.getViewport({ scale: 1 }), tc = await pg.getTextContent(), lineas = {}, mejor = null;
+      tc.items.forEach(function (it) { if (!it.str || !it.str.trim()) return; var q = vp.convertToViewportPoint(it.transform[4], it.transform[5]); var k = Math.round(q[1] / 3); (lineas[k] = lineas[k] || []).push({ x: q[0], w: it.width || 0, y: q[1], s: sinAcentos(it.str) }); });
+      Object.keys(lineas).forEach(function (k) {
+        var L = lineas[k].filter(function (e) { return e.s; }).sort(function (a, b) { return a.x - b.x; }), texto = "", ini = [];
+        L.forEach(function (e) { ini.push(texto.length ? texto.length + 1 : 0); texto += (texto.length ? " " : "") + e.s; });
+        var en = texto.indexOf(meta); if (en < 0) return;
+        var dentro = L.filter(function (e, m) { return ini[m] < en + meta.length && ini[m] + e.s.length > en; }); if (!dentro.length) return;
+        var x0 = dentro[0].x, x1 = dentro[dentro.length - 1].x + dentro[dentro.length - 1].w, y = dentro[0].y;
+        if (!mejor || y > mejor.y) mejor = { x: (x0 + x1) / 2, y: y };
+      });
+      if (mejor) return { pagina: n, x: mejor.x, y: mejor.y, W: vp.width, H: vp.height };
+    }
+    return null;
+  }
   async function autorizar(c, b) {
     b.disabled = true;
     try {
@@ -251,45 +271,54 @@
       if (huella !== c.pdf_sha256) throw { mensaje: "El PDF no coincide con el registrado. Actualice la lista e intente de nuevo." };
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = "../pdf.worker.min.js";
       var doc = await window.pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+      var sello = el("img", "sello"); sello.alt = ""; sello.hidden = true;
+      await new Promise(function (ok) { sello.onload = ok; sello.onerror = ok; sello.src = desp.mi_firma; });
+      var prop = sello.naturalWidth && sello.naturalHeight ? sello.naturalWidth / sello.naturalHeight : 1;
+      var hallado = null; try { hallado = await ubicarNombre(doc, desp.mi_nombre); } catch (x) { hallado = null; }
+      // Colocación automática: encima de su nombre, con una altura cercana al 8.5% de la hoja.
+      var auto = null;
+      if (hallado) { var alto = 0.085 * hallado.H, anchoPt = alto * prop; auto = { pagina: hallado.pagina, cx: Math.min(0.95, Math.max(0.05, hallado.x / hallado.W)), cy: Math.min(0.97, Math.max(0.03, (hallado.y - 14 - alto * 0.45) / hallado.H)), ancho: Math.min(0.45, Math.max(0.05, anchoPt / hallado.W)) }; }
       var D = abrir("Autorizar " + c.numero);
-      D.appendChild(el("p", "nota", c.asunto + " · " + c.cliente_nombre + ". Lea el contrato completo. Después elija la hoja de firmas y toque el lugar exacto donde va su firma. Al autorizar, el PDF queda fijo y ya puede enviarse al cliente."));
-      var bo = el("button", "btn claro", "Abrir el PDF completo para leerlo"); bo.type = "button"; bo.addEventListener("click", function () { window.open(r.url, "_blank", "noopener"); }); D.appendChild(bo);
+      var aviso = el("p", auto ? "okmsg" : "nota", auto ? "Su firma ya está colocada sobre su nombre, en la hoja " + auto.pagina + ". Revise y presione Autorizar y firmar. Si prefiere otro lugar, toque la hoja donde deba ir." : "No encontramos su nombre en el PDF. Elija la hoja de firmas y toque el lugar donde va su firma.");
+      D.appendChild(el("p", "nota", c.asunto + " · " + c.cliente_nombre)); D.appendChild(aviso);
+      var arriba = el("div", "acc");
+      var bf = el("button", "btn", "Autorizar y firmar"); bf.type = "button"; bf.disabled = true; arriba.appendChild(bf);
+      var bo = el("button", "btn claro", "Leer el PDF completo"); bo.type = "button"; bo.addEventListener("click", function () { window.open(r.url, "_blank", "noopener"); }); arriba.appendChild(bo);
+      D.appendChild(arriba);
+      var lr = el("label", "casilla"); var rub = el("input"); rub.type = "checkbox"; rub.checked = doc.numPages > 1; lr.appendChild(rub); lr.appendChild(document.createTextNode(" Rubricar además al margen de las otras hojas (" + Math.max(0, doc.numPages - 1) + ")")); if (doc.numPages > 1) D.appendChild(lr);
+      var er = el("p", "err"); er.hidden = true; D.appendChild(er);
       var ctl = el("div", "rej");
       var d1 = el("div"); var l1 = el("label", null, "Hoja donde va la firma"); var sel = el("select"); sel.id = "auHoja"; l1.htmlFor = "auHoja";
       for (var n = 1; n <= doc.numPages; n++) { var o = el("option", null, "Hoja " + n + " de " + doc.numPages); o.value = n; sel.appendChild(o); }
-      sel.value = doc.numPages; d1.appendChild(l1); d1.appendChild(sel); ctl.appendChild(d1);
-      var d2 = el("div"); var l2 = el("label", null, "Tamaño de la firma"); var tam = el("input"); tam.type = "range"; tam.min = "8"; tam.max = "45"; tam.value = "22"; tam.id = "auTam"; l2.htmlFor = "auTam"; d2.appendChild(l2); d2.appendChild(tam); ctl.appendChild(d2);
+      sel.value = auto ? auto.pagina : doc.numPages; d1.appendChild(l1); d1.appendChild(sel); ctl.appendChild(d1);
+      var d2 = el("div"); var l2 = el("label", null, "Tamaño de la firma"); var tam = el("input"); tam.type = "range"; tam.min = "5"; tam.max = "45"; tam.step = "0.5"; tam.value = auto ? String(Math.round(auto.ancho * 200) / 2) : "12"; tam.id = "auTam"; l2.htmlFor = "auTam"; d2.appendChild(l2); d2.appendChild(tam); ctl.appendChild(d2);
       D.appendChild(ctl);
-      var marco = el("div", "pliego"); var lienzo = el("canvas"); var sello = el("img", "sello"); sello.alt = ""; sello.src = desp.mi_firma; sello.hidden = true; marco.appendChild(lienzo); marco.appendChild(sello); D.appendChild(marco);
-      var pos = null, turno = 0;
-      function colocar() { if (!pos) { sello.hidden = true; return; } sello.hidden = false; sello.style.left = (pos.cx * 100) + "%"; sello.style.top = (pos.cy * 100) + "%"; sello.style.width = tam.value + "%"; }
+      var marco = el("div", "pliego"); var lienzo = el("canvas"); marco.appendChild(lienzo); marco.appendChild(sello); D.appendChild(marco);
+      var pos = null, movida = false, turno = 0;
+      function colocar() { bf.disabled = !pos; if (!pos) { sello.hidden = true; return; } sello.hidden = false; sello.style.left = (pos.cx * 100) + "%"; sello.style.top = (pos.cy * 100) + "%"; sello.style.width = tam.value + "%"; }
       async function hoja() {
-        var mio = ++turno; pos = null; colocar(); bf.disabled = true;
+        var mio = ++turno; pos = auto && !movida && Number(sel.value) === auto.pagina ? { cx: auto.cx, cy: auto.cy } : null; colocar(); bf.disabled = true;
         var pg = await doc.getPage(Number(sel.value)); if (mio !== turno) return;
         var base = pg.getViewport({ scale: 1 }), vp = pg.getViewport({ scale: Math.min(2, 1100 / base.width) });
         lienzo.width = vp.width; lienzo.height = vp.height;
         await pg.render({ canvasContext: lienzo.getContext("2d"), viewport: vp }).promise;
+        if (mio === turno) colocar();
       }
       marco.addEventListener("click", function (ev) {
         var q = lienzo.getBoundingClientRect(); if (!q.width) return;
-        pos = { cx: Math.min(0.98, Math.max(0.02, (ev.clientX - q.left) / q.width)), cy: Math.min(0.98, Math.max(0.02, (ev.clientY - q.top) / q.height)) };
-        colocar(); bf.disabled = !si.checked;
+        pos = { cx: Math.min(0.98, Math.max(0.02, (ev.clientX - q.left) / q.width)), cy: Math.min(0.98, Math.max(0.02, (ev.clientY - q.top) / q.height)) }; movida = true;
+        aviso.className = "nota"; aviso.textContent = "Firma colocada donde usted tocó. Puede tocar otra vez para moverla."; colocar();
       });
-      tam.addEventListener("input", colocar); sel.addEventListener("change", hoja);
-      var lc = el("label", "casilla"); var si = el("input"); si.type = "checkbox"; lc.appendChild(si); lc.appendChild(document.createTextNode(" Leí el contrato completo y autorizo que se estampe mi firma en el lugar marcado."));
-      D.appendChild(lc);
-      var er = el("p", "err"); er.hidden = true; D.appendChild(er);
-      var bf = el("button", "btn", "Autorizar y firmar"); bf.type = "button"; bf.disabled = true; D.appendChild(bf);
-      si.addEventListener("change", function () { bf.disabled = !(si.checked && pos); });
+      tam.addEventListener("input", function () { movida = movida || !auto || Math.abs(Number(tam.value) / 100 - auto.ancho) > 0.004; colocar(); }); sel.addEventListener("change", hoja);
       bf.addEventListener("click", async function () {
-        bf.disabled = true; er.hidden = true;
+        bf.disabled = true; er.hidden = true; bf.textContent = "Firmando";
         try {
-          await api({ accion: "autorizar", contrato_id: c.id, pagina: Number(sel.value), cx: pos.cx, cy: pos.cy, ancho: Number(tam.value) / 100, sha256_visto: huella }, DESPACHO);
+          var ra = await api({ accion: "autorizar", contrato_id: c.id, pagina: Number(sel.value), cx: pos.cx, cy: pos.cy, ancho: Number(tam.value) / 100, rubricar: rub.checked && doc.numPages > 1, automatica: !!auto && !movida, sha256_visto: huella }, DESPACHO);
           await cargar();
           var D2 = abrir(c.numero + " autorizado");
-          D2.appendChild(el("p", "okmsg", "Su firma quedó estampada y el contrato está listo para enviarse al cliente. La versión sin firma se conserva en el expediente."));
+          D2.appendChild(el("p", "okmsg", "Su firma quedó estampada" + (ra.rubricas ? " y se rubricaron " + ra.rubricas + " hojas más" : "") + ". El contrato está listo para enviarse al cliente. La versión sin firma se conserva en el expediente."));
           var bv = el("button", "btn claro", "Ver el PDF ya firmado por el despacho"); bv.type = "button"; bv.addEventListener("click", function () { bajar(c, "original", bv); }); D2.appendChild(bv);
-        } catch (e) { er.textContent = e.mensaje || "No se pudo autorizar."; er.hidden = false; bf.disabled = false; }
+        } catch (e) { er.textContent = e.mensaje || "No se pudo autorizar."; er.hidden = false; bf.textContent = "Autorizar y firmar"; bf.disabled = !pos; }
       });
       await hoja();
     } catch (e) { error("lErr", e.mensaje || "No se pudo abrir el contrato."); }
@@ -304,13 +333,31 @@
     if (pdf.size > 15 * 1024 * 1024) { error("nErr", "El PDF pesa más de 15 MB. Redúzcalo e intente de nuevo."); return; }
     $("nCrear").disabled = true; $("nCrear").textContent = "Registrando";
     try {
-      var r = await api({ accion: "equipo_crear", asunto: $("nAsunto").value, cliente_nombre: $("nNombre").value, cliente_correo: $("nCorreo").value, pdf: await aBase64(pdf) });
-      ["nAsunto", "nNombre", "nCorreo", "nPdf"].forEach(function (i) { $(i).value = ""; });
+      var cuerpo = { accion: "equipo_crear", asunto: $("nAsunto").value, cliente_nombre: $("nNombre").value, cliente_correo: $("nCorreo").value, pdf: await aBase64(pdf) };
+      if ($("nVarios").checked) {
+        cuerpo.firmantes = Array.prototype.map.call($("nFirmantes").querySelectorAll(".firmante"), function (f) { var i = f.querySelectorAll("input"); return { nombre: i[0].value.trim(), cargo: i[1].value.trim(), correo: i[2].value.trim() }; }).filter(function (f) { return f.nombre || f.correo; });
+        if (cuerpo.firmantes.length < 2) throw { mensaje: "Capture al menos dos firmantes, cada uno con su nombre completo y su correo personal." };
+      }
+      var r = await api(cuerpo);
+      ["nAsunto", "nNombre", "nCorreo", "nPdf"].forEach(function (i) { $(i).value = ""; }); $("nVarios").checked = false; modoVarios();
       await cargar();
       var c = contratos.filter(function (x) { return x.id === r.id; })[0]; if (c) detalle(c);
     } catch (e) { error("nErr", e.mensaje); }
     finally { $("nCrear").disabled = false; $("nCrear").textContent = "Registrar contrato"; }
   });
+
+  function filaFirmante() {
+    var n = $("nFirmantes").querySelectorAll(".firmante").length + 1, f = el("div", "firmante rej");
+    [["Nombre completo del firmante " + n, "text", 120, "name"], ["Cargo o carácter (por ejemplo, Presidente del Consejo)", "text", 80, "organization-title"], ["Correo personal del firmante " + n, "email", 120, "off"]].forEach(function (k, m) { var d = el("div"), id = "nF" + n + "_" + m, l = el("label", null, k[0]); l.htmlFor = id; var i = el("input"); i.id = id; i.type = k[1]; i.maxLength = k[2]; i.autocomplete = k[3]; d.appendChild(l); d.appendChild(i); f.appendChild(d); });
+    $("nFirmantes").insertBefore(f, $("nOtro"));
+    $("nOtro").hidden = n >= 4;
+  }
+  function modoVarios() {
+    var v = $("nVarios").checked; $("nFirmantes").hidden = !v; $("nCorreoCaja").hidden = v;
+    $("nNombreEt").textContent = v ? "Nombre de la empresa o asociación (el cliente)" : "Nombre completo del cliente";
+    if (v && !$("nFirmantes").querySelector(".firmante")) { filaFirmante(); filaFirmante(); }
+  }
+  $("nVarios").addEventListener("change", modoVarios); $("nOtro").addEventListener("click", filaFirmante);
 
   // ---------- Ventana
   function abrir(titulo) { $("dTitulo").textContent = titulo; $("dCuerpo").textContent = ""; $("velo").hidden = false; return $("dCuerpo"); }
@@ -319,25 +366,28 @@
   $("velo").addEventListener("click", function (e) { if (e.target === $("velo") && !$("dCuerpo").querySelector("input,textarea,canvas")) cerrar(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("velo").hidden) cerrar(); });
 
-  function correoA(c, asunto, cuerpo) { return "mailto:" + c.cliente_correo.replace(/[^a-zA-Z0-9@._+-]/g, "") + "?subject=" + encodeURIComponent(asunto) + "&body=" + encodeURIComponent(cuerpo); }
+  function correoA(c, asunto, cuerpo) { return "mailto:" + String(c.cliente_correo || c.correo || "").replace(/[^a-zA-Z0-9@._+-]/g, "") + "?subject=" + encodeURIComponent(asunto) + "&body=" + encodeURIComponent(cuerpo); }
   function copiar(texto, boton) { navigator.clipboard.writeText(texto).then(function () { var t = boton.textContent; boton.textContent = "Copiado"; setTimeout(function () { boton.textContent = t; }, 1500); }).catch(function () { /* sin permiso */ }); }
 
   async function enviar(c, b) {
     b.disabled = true;
     try {
       var r = await api({ accion: "equipo_enviar", contrato_id: c.id });
+      var envios = r.envios && r.envios.length ? r.envios : [{ n: 1, nombre: c.cliente_nombre, correo: c.cliente_correo, cargo: null, enlace: r.enlace, codigo: r.codigo, expira: r.expira }];
       var D = abrir("Enviar " + c.numero);
-      D.appendChild(el("p", "nota", "El enlace y el código se muestran una sola vez. Si cierra esta ventana sin enviarlos, genere un enlace nuevo. Cualquier enlace anterior de este contrato dejó de servir."));
-      var caja = el("div", "env");
-      caja.appendChild(el("label", null, "Enlace personal del cliente")); var cl = el("code", null, r.enlace); caja.appendChild(cl);
-      caja.appendChild(el("label", null, "Código de verificación")); caja.appendChild(el("div", "grande", r.codigo));
-      caja.appendChild(el("p", "nota", "Vence el " + fecha(r.expira) + "."));
-      D.appendChild(caja);
-      var texto = "Estimado(a) " + c.cliente_nombre + ":\n\nSu contrato con HALTOR está listo para firma.\n\nAbra este enlace desde su celular:\n" + r.enlace + "\n\nSu código de verificación: " + r.codigo + "\n\nEl proceso le pedirá una fotografía de su identificación oficial por ambos lados y una de su rostro. El enlace es personal, vence en 72 horas y no debe compartirse.\n\nCuando firme, el despacho revisará su identificación y le avisará para que descargue su copia.\n\nHALTOR";
-      var acc = el("div", "acc");
-      var m = el("a", "btn", "Abrir mi correo con el mensaje listo"); m.href = correoA(c, "Su contrato con HALTOR está listo para firma", texto); acc.appendChild(m);
-      var cp = el("button", "btn claro", "Copiar mensaje"); cp.type = "button"; cp.addEventListener("click", function () { copiar(texto, cp); }); acc.appendChild(cp);
-      D.appendChild(acc);
+      D.appendChild(el("p", "nota", "El enlace y el código se muestran una sola vez. Si cierra esta ventana sin enviarlos, genere enlaces nuevos. Los enlaces anteriores de estas personas dejaron de servir." + (envios.length > 1 ? " Cada firmante tiene su propio enlace y su propio código: no los cruce." : "")));
+      envios.forEach(function (v) {
+        var caja = el("div", "env");
+        if (envios.length > 1 || varios(c)) caja.appendChild(el("h3", null, v.nombre + (v.cargo ? ", " + v.cargo : "") + " · " + v.correo));
+        caja.appendChild(el("label", null, "Enlace personal")); caja.appendChild(el("code", null, v.enlace));
+        caja.appendChild(el("label", null, "Código de verificación")); caja.appendChild(el("div", "grande", v.codigo));
+        caja.appendChild(el("p", "nota", "Vence el " + fecha(v.expira) + "."));
+        var texto = "Estimado(a) " + v.nombre + ":\n\n" + (varios(c) ? "El contrato de " + c.cliente_nombre + " con HALTOR está listo para su firma" + (v.cargo ? " como " + v.cargo : "") + "." : "Su contrato con HALTOR está listo para firma.") + "\n\nAbra este enlace desde su celular:\n" + v.enlace + "\n\nSu código de verificación: " + v.codigo + "\n\nEl proceso le pedirá una fotografía de su identificación oficial por ambos lados y una de su rostro. El enlace es personal, vence en 72 horas y no debe compartirse.\n\n" + (envios.length > 1 || varios(c) ? "El contrato quedará firmado cuando hayan firmado todos los representantes y el despacho revise las identificaciones." : "Cuando firme, el despacho revisará su identificación y le enviará su copia.") + "\n\nHALTOR";
+        var acc = el("div", "acc");
+        var m = el("a", "btn", "Abrir mi correo con el mensaje listo"); m.href = correoA({ cliente_correo: v.correo }, "Contrato con HALTOR listo para firma", texto); acc.appendChild(m);
+        var cp = el("button", "btn claro", "Copiar mensaje"); cp.type = "button"; cp.addEventListener("click", function () { copiar(texto, cp); }); acc.appendChild(cp);
+        caja.appendChild(acc); D.appendChild(caja);
+      });
       D.appendChild(el("p", "nota", "Para más seguridad puede mandar el enlace por correo y el código por otro medio, por ejemplo WhatsApp."));
       await cargar();
     } catch (e) { error("lErr", e.mensaje); }
@@ -362,63 +412,75 @@
     return { t: p.join(" · ") + ".", alerta: alerta };
   }
 
+  var ESTADO_FIRMANTE = { sin_enlace: "Sin enlace todavía", abierta: "Aún no firma", bloqueada: "Enlace bloqueado por intentos", firmando: "Firmando", en_revision: "Ya firmó, falta su revisión", firmada: "Aprobado", anulada: "Enlace anulado" };
   async function revisar(c, b) {
     b.disabled = true;
     try {
       var r = await api({ accion: "equipo_evidencias", contrato_id: c.id });
-      var D = abrir("Revisar " + c.numero);
-      D.appendChild(el("p", "nota", "Compruebe que la identificación sea legible y vigente, que el rostro corresponda a la fotografía de la identificación y que el nombre coincida con el del contrato. Nada queda firmado hasta que usted lo apruebe."));
-      var dl = el("dl", "datos");
-      [["Cliente en el contrato", r.cliente_nombre], ["Nombre que escribió al firmar", r.nombre_tecleado], ["Código verificado", fecha(r.verificado_en)], ["Contrato mostrado", fecha(r.mostrado_en)], ["Lectura confirmada", fecha(r.lectura_en)], ["Firmó", fecha(r.cliente_firmo_en)], ["Dirección de internet", r.ip], ["Dispositivo", r.agente]]
-        .forEach(function (f) { dl.appendChild(el("dt", null, f[0])); dl.appendChild(el("dd", null, f[1] || "sin dato")); });
-      D.appendChild(dl);
-      var F = el("div", "fotos");
-      [["ine_frente", "Identificación, frente"], ["ine_reverso", "Identificación, reverso"], ["rostro", "Fotografía del rostro"], ["firma", "Firma trazada"]].forEach(function (k) {
-        var f = el("div", "foto"); f.appendChild(el("b", null, k[1]));
-        if (r[k[0]] && /^https:\/\/khkzwhsbhfydcshzggos\.supabase\.co\//.test(r[k[0]])) { var im = el("img"); im.alt = k[1]; im.src = r[k[0]]; f.appendChild(im); } else f.appendChild(el("small", "alerta", "Falta esta imagen."));
-        if (k[0] !== "firma") { var m = marcas(k[0], (r.auto || {})[k[0]]); f.appendChild(el("small", m.alerta ? "alerta" : null, m.t)); }
-        F.appendChild(f);
-      });
-      D.appendChild(F);
-      var dos = el("div", "dos");
-      var A = el("div"); A.appendChild(el("h3", null, "Aprobar")); A.appendChild(el("p", "nota", "Cierra el contrato con su nombre como revisor. No se puede deshacer."));
-      var ba = el("button", "btn", "Aprobar y cerrar el contrato"); ba.type = "button"; A.appendChild(ba); var ea = el("p", "err"); ea.hidden = true; A.appendChild(ea);
-      var R = el("div"); R.appendChild(el("h3", null, "Pedir que repita"));
-      var ch = el("div", "checks"), casillas = {};
-      [["ine_frente", "Frente"], ["ine_reverso", "Reverso"], ["rostro", "Rostro"], ["firma", "Firma"]].forEach(function (k) { var l = el("label"); var i = el("input"); i.type = "checkbox"; i.id = "rz-" + k[0]; casillas[k[0]] = i; l.appendChild(i); l.appendChild(document.createTextNode(k[1])); ch.appendChild(l); });
-      R.appendChild(ch); var lm = el("label", null, "Motivo (el cliente lo leerá)"); lm.htmlFor = "rzMotivo"; R.appendChild(lm);
-      var mot = el("textarea"); mot.id = "rzMotivo"; mot.maxLength = 300; R.appendChild(mot);
-      var br = el("button", "btn rojo", "Rechazar y pedir repetición"); br.type = "button"; R.appendChild(br); var er = el("p", "err"); er.hidden = true; R.appendChild(er);
-      dos.appendChild(A); dos.appendChild(R); D.appendChild(dos);
-
-      var aviso = function (asunto, cuerpo, nota) {
+      var lista = r.firmantes && r.firmantes.length ? r.firmantes : [r];
+      var todos = lista.every(function (f) { return f.estado_sesion === "en_revision"; }) && r.estado_contrato === "firmado_cliente";
+      var D = abrir((todos ? "Revisar " : "Avance de ") + c.numero);
+      D.appendChild(el("p", "nota", "Compruebe que cada identificación sea legible y vigente, que el rostro corresponda a la fotografía de la identificación y que el nombre coincida con el del contrato. Nada queda firmado hasta que usted lo apruebe." + (lista.length > 1 ? " El contrato se aprueba una sola vez, cuando ya firmaron todos." : "")));
+      var aviso = function (correo, asunto, cuerpo, nota) {
         var D2 = abrir(c.numero); D2.appendChild(el("p", "okmsg", nota));
-        var m = el("a", "btn", "Abrir mi correo para avisar al cliente"); m.href = correoA(c, asunto, cuerpo); D2.appendChild(m);
+        var m = el("a", "btn", "Abrir mi correo para avisar"); m.href = correoA({ cliente_correo: correo }, asunto, cuerpo); D2.appendChild(m);
         return D2;
       };
+      var botones = [];
+      lista.forEach(function (f) {
+        var caja = el("div", "firmante-rev");
+        if (lista.length > 1 || r.varios) caja.appendChild(el("h3", null, (f.nombre || r.cliente_nombre) + (f.cargo ? ", " + f.cargo : "") + " · " + (ESTADO_FIRMANTE[f.estado_sesion] || f.estado_sesion)));
+        if (f.estado_sesion !== "en_revision" && f.estado_sesion !== "firmada") { caja.appendChild(el("p", "nota", "Todavía no hay evidencias que revisar de esta persona." + (f.rechazo_motivo ? " Se le pidió repetir: " + f.rechazo_motivo : ""))); D.appendChild(caja); return; }
+        var dl = el("dl", "datos");
+        [["Nombre en el contrato", f.nombre || r.cliente_nombre], ["Nombre que escribió al firmar", f.nombre_tecleado], ["Código verificado", fecha(f.verificado_en)], ["Contrato mostrado", fecha(f.mostrado_en)], ["Lectura confirmada", fecha(f.lectura_en)], ["Firmó", fecha(f.cliente_firmo_en)], ["Dirección de internet", f.ip], ["Dispositivo", f.agente]]
+          .forEach(function (x) { dl.appendChild(el("dt", null, x[0])); dl.appendChild(el("dd", null, x[1] || "sin dato")); });
+        caja.appendChild(dl);
+        var F = el("div", "fotos");
+        [["ine_frente", "Identificación, frente"], ["ine_reverso", "Identificación, reverso"], ["rostro", "Fotografía del rostro"], ["firma", "Firma trazada"]].forEach(function (k) {
+          var d = el("div", "foto"); d.appendChild(el("b", null, k[1]));
+          if (f[k[0]] && /^https:\/\/khkzwhsbhfydcshzggos\.supabase\.co\//.test(f[k[0]])) { var im = el("img"); im.alt = k[1]; im.src = f[k[0]]; d.appendChild(im); } else d.appendChild(el("small", "alerta", "Falta esta imagen."));
+          if (k[0] !== "firma") { var m = marcas(k[0], (f.auto || {})[k[0]]); d.appendChild(el("small", m.alerta ? "alerta" : null, m.t)); }
+          F.appendChild(d);
+        });
+        caja.appendChild(F);
+        if (f.estado_sesion === "en_revision") {
+          var R = el("div"); R.appendChild(el("h3", null, lista.length > 1 ? "Pedir a " + String(f.nombre).split(" ")[0] + " que repita" : "Pedir que repita"));
+          var ch = el("div", "checks"), casillas = {}, sufijo = "-" + (f.n || 1);
+          [["ine_frente", "Frente"], ["ine_reverso", "Reverso"], ["rostro", "Rostro"], ["firma", "Firma"]].forEach(function (k) { var l = el("label"); var i = el("input"); i.type = "checkbox"; i.id = "rz-" + k[0] + sufijo; casillas[k[0]] = i; l.appendChild(i); l.appendChild(document.createTextNode(k[1])); ch.appendChild(l); });
+          R.appendChild(ch); var lm = el("label", null, "Motivo (el firmante lo leerá)"); lm.htmlFor = "rzMotivo" + sufijo; R.appendChild(lm);
+          var mot = el("textarea"); mot.id = "rzMotivo" + sufijo; mot.maxLength = 300; R.appendChild(mot);
+          var br = el("button", "btn rojo", "Rechazar y pedir repetición"); br.type = "button"; R.appendChild(br); var er = el("p", "err"); er.hidden = true; R.appendChild(er);
+          botones.push(br);
+          br.addEventListener("click", async function () {
+            var campos = Object.keys(casillas).filter(function (k) { return casillas[k].checked; });
+            botones.forEach(function (x) { x.disabled = true; });
+            try {
+              await api({ accion: "equipo_rechazar", contrato_id: c.id, firmante: f.n || 1, campos: campos, motivo: mot.value }); await cargar();
+              aviso(f.correo || c.cliente_correo, "Necesitamos que repita un paso de su firma", "Estimado(a) " + (f.nombre || c.cliente_nombre) + ":\n\nAl revisar su firma encontramos lo siguiente: " + mot.value.trim() + "\n\nPor favor abra de nuevo el mismo enlace que le enviamos, escriba el mismo código y repita el paso que se le indica. Tiene 72 horas.\n\nHALTOR", "Se pidió a " + (f.nombre || "el cliente") + " repetir. El contrato volvió a \"Enviado al cliente\".");
+            } catch (e) { er.textContent = e.mensaje; er.hidden = false; botones.forEach(function (x) { x.disabled = false; }); }
+          });
+          caja.appendChild(R);
+        }
+        D.appendChild(caja);
+      });
+      var A = el("div", "firmante-rev"); A.appendChild(el("h3", null, "Aprobar"));
+      A.appendChild(el("p", "nota", todos ? "Cierra el contrato con su nombre como revisor" + (lista.length > 1 ? ", con las evidencias de todos los firmantes" : "") + ". No se puede deshacer." : "Se podrá aprobar cuando hayan firmado todos los firmantes."));
+      var ba = el("button", "btn", "Aprobar y cerrar el contrato"); ba.type = "button"; ba.disabled = !todos; A.appendChild(ba); var ea = el("p", "err"); ea.hidden = true; A.appendChild(ea);
+      D.appendChild(A); botones.push(ba);
       ba.addEventListener("click", async function () {
-        ba.disabled = true; br.disabled = true; ba.textContent = "Cerrando el contrato";
+        botones.forEach(function (x) { x.disabled = true; }); ba.textContent = "Cerrando el contrato";
         try {
           var ra = await api({ accion: "equipo_aprobar", contrato_id: c.id }); await cargar();
-          var enviado = ra.correo && ra.correo.enviado;
-          if (enviado) {
+          if (ra.correo && ra.correo.enviado) {
             var D3 = abrir(c.numero);
             D3.appendChild(el("p", "okmsg", "Contrato aprobado y cerrado."));
-            D3.appendChild(el("p", "nota", "Se envió al cliente (" + ra.correo.para + ") su contrato firmado con la huella, con copia a: " + (ra.correo.cc || []).join(", ") + " y a la cuenta del despacho."));
+            D3.appendChild(el("p", "nota", "Se envió a " + ra.correo.para + " el contrato firmado con la huella, con copia a: " + (ra.correo.cc || []).join(", ") + " y a la cuenta del despacho."));
             var bx = el("button", "btn claro", "Descargar el contrato firmado"); bx.type = "button"; bx.addEventListener("click", function () { bajar(c, "firmado", bx); }); D3.appendChild(bx);
             return;
           }
-          var D2 = aviso("Su contrato con HALTOR quedó firmado", "Estimado(a) " + c.cliente_nombre + ":\n\nRevisamos su identificación y su firma, y su contrato quedó aceptado.\n\nPara descargar su copia, abra el mismo enlace que le enviamos y escriba el mismo código de verificación. Podrá hacerlo durante los próximos 30 días.\n\nHALTOR", "Contrato aprobado y cerrado. El correo automático no salió" + (ra.correo && ra.correo.error ? " (" + ra.correo.error + ")" : "") + ". Avise al cliente desde su correo y adjunte el PDF.");
+          var D2 = aviso(lista.map(function (f) { return f.correo || c.cliente_correo; }).join(","), "Su contrato con HALTOR quedó firmado", "Estimado(a) " + lista.map(function (f) { return f.nombre || c.cliente_nombre; }).join(" y ") + ":\n\nRevisamos su identificación y su firma, y el contrato quedó aceptado.\n\nPara descargar su copia, abra el mismo enlace que le enviamos y escriba el mismo código de verificación. Podrá hacerlo durante los próximos 30 días.\n\nHALTOR", "Contrato aprobado y cerrado. El correo automático no salió" + (ra.correo && ra.correo.error ? " (" + ra.correo.error + ")" : "") + ". Avise desde su correo y adjunte el PDF.");
           var bd = el("button", "btn claro", "Descargar el contrato firmado"); bd.type = "button"; bd.addEventListener("click", function () { bajar(c, "firmado", bd); }); D2.appendChild(document.createTextNode(" ")); D2.appendChild(bd);
-        } catch (e) { ea.textContent = e.mensaje; ea.hidden = false; ba.disabled = false; br.disabled = false; ba.textContent = "Aprobar y cerrar el contrato"; }
-      });
-      br.addEventListener("click", async function () {
-        var campos = Object.keys(casillas).filter(function (k) { return casillas[k].checked; });
-        br.disabled = true; ba.disabled = true;
-        try {
-          await api({ accion: "equipo_rechazar", contrato_id: c.id, campos: campos, motivo: mot.value }); await cargar();
-          aviso("Necesitamos que repita un paso de su firma", "Estimado(a) " + c.cliente_nombre + ":\n\nAl revisar su firma encontramos lo siguiente: " + mot.value.trim() + "\n\nPor favor abra de nuevo el mismo enlace que le enviamos, escriba el mismo código y repita el paso que se le indica. Tiene 72 horas.\n\nHALTOR", "Se pidió al cliente repetir. El contrato volvió a \"Enviado al cliente\".");
-        } catch (e) { er.textContent = e.mensaje; er.hidden = false; br.disabled = false; ba.disabled = false; }
+        } catch (e) { ea.textContent = e.mensaje; ea.hidden = false; botones.forEach(function (x) { x.disabled = false; }); ba.disabled = !todos; ba.textContent = "Aprobar y cerrar el contrato"; }
       });
     } catch (e) { error("lErr", e.mensaje); }
     finally { b.disabled = false; }

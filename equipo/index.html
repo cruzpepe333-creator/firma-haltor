@@ -7,7 +7,7 @@
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob: https://khkzwhsbhfydcshzggos.supabase.co; connect-src 'self' https://khkzwhsbhfydcshzggos.supabase.co; base-uri 'none'; form-action 'none'">
 <title>HALTOR · Firma digital, equipo</title>
-<link rel="stylesheet" href="equipo.css?v=7">
+<link rel="stylesheet" href="equipo.css?v=8">
 </head>
 <body>
 <header class="top">
@@ -65,9 +65,14 @@
       <div class="fila-t"><h2>Nuevo contrato</h2></div>
       <div class="rej">
         <div><label for="nAsunto">Asunto</label><input id="nAsunto" type="text" maxlength="200" placeholder="Prestación de servicios legales, asunto..."></div>
-        <div><label for="nNombre">Nombre completo del cliente</label><input id="nNombre" type="text" maxlength="120"></div>
-        <div><label for="nCorreo">Correo personal del cliente</label><input id="nCorreo" type="email"></div>
+        <div><label for="nNombre" id="nNombreEt">Nombre completo del cliente</label><input id="nNombre" type="text" maxlength="120"></div>
+        <div id="nCorreoCaja"><label for="nCorreo">Correo personal del cliente</label><input id="nCorreo" type="email"></div>
         <div><label for="nPdf">Contrato en PDF, versión final</label><input id="nPdf" type="file" accept="application/pdf"></div>
+      </div>
+      <label class="casilla"><input type="checkbox" id="nVarios"> El cliente es una empresa o asociación y firman sus representantes (dos o más personas)</label>
+      <div id="nFirmantes" hidden>
+        <p class="nota">Cada representante recibe su propio enlace y código, entrega su identificación y su rostro, y firma por separado. El contrato se cierra cuando firman todos y el despacho los aprueba.</p>
+        <button class="btn claro" id="nOtro" type="button">Agregar otro firmante</button>
       </div>
       <p class="nota">El PDF debe llevar la cláusula de firma electrónica y el espacio para la firma del despacho, sin firmar. Quien firma por el despacho lo autoriza desde su cuenta y ahí se estampa su firma. Una vez autorizado ya no se puede cambiar.</p>
       <p class="err" id="nErr" hidden></p>
@@ -101,6 +106,6 @@
 
 <script src="../pdf.min.js"></script>
 <script src="supabase.js"></script>
-<script src="equipo.js?v=7"></script>
+<script src="equipo.js?v=8"></script>
 </body>
 </html>

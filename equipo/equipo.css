@@ -77,3 +77,8 @@ select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;fo
 .reglas li{padding:2px 0}
 .reglas .si{color:#1f7a4d}
 .reglas .no{color:#a33}
+
+.firmante{border-top:1px solid var(--line);padding-top:8px;margin-top:8px}
+.firmante-rev{border-top:2px solid var(--line);margin-top:18px;padding-top:12px}
+.env h3,.firmante-rev h3{margin:0 0 8px;font-size:15px}
+.env+.env{margin-top:14px}

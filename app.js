@@ -87,6 +87,7 @@
     $("dNumero").textContent = datos.numero; $("dAsunto").textContent = datos.asunto;
     $("dVence").textContent = fmt.format(new Date(datos.expira)) + " h";
     $("quien").textContent = String(datos.nombre).toUpperCase(); $("rNumero").textContent = datos.numero;
+    if (datos.empresa) { $("dAsunto").textContent = datos.asunto + " · Usted firma por " + datos.empresa + (datos.cargo ? ", como " + datos.cargo : "") + "."; var rol = document.querySelector("#pad .who span"); if (rol) rol.textContent = (datos.cargo ? datos.cargo + ", " : "") + "por " + datos.empresa; }
     show("s1");
   }
   $("go1").addEventListener("click", function () { show("s2"); $("code").focus(); });
