@@ -7,7 +7,7 @@
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob: https://khkzwhsbhfydcshzggos.supabase.co; connect-src 'self' https://khkzwhsbhfydcshzggos.supabase.co; base-uri 'none'; form-action 'none'">
 <title>HALTOR · Firma digital, equipo</title>
-<link rel="stylesheet" href="equipo.css?v=6">
+<link rel="stylesheet" href="equipo.css?v=7">
 </head>
 <body>
 <header class="top">
@@ -44,6 +44,19 @@
     <label for="totp">Código</label><input id="totp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
     <p class="err" id="dosErr" hidden></p>
     <button class="btn" id="verificar" type="button">Verificar</button>
+  </section>
+
+  <!-- Contraseña propia -->
+  <section class="caja angosta" id="vClave" hidden>
+    <h2>Defina su contraseña</h2>
+    <p class="nota">Bienvenido. El enlace con el que entró sirve una sola vez. Para entrar las próximas veces defina aquí su propia contraseña; nadie más la conoce.</p>
+    <label for="pc1">Contraseña nueva</label><input id="pc1" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <label for="pc2">Escríbala otra vez</label><input id="pc2" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <label class="casilla"><input type="checkbox" id="pcVer"> Mostrar lo que escribo</label>
+    <ul class="reglas" id="pcReglas"></ul>
+    <p class="err" id="pcErr" hidden></p>
+    <button class="btn" id="pcGuardar" type="button" disabled>Guardar y entrar</button>
+    <p class="nota"><button class="lnk" id="pcOmitir" type="button">Ahora no, entrar sin definirla</button> (podrá hacerlo después en "Equipo y correo").</p>
   </section>
 
   <!-- Panel -->
@@ -88,6 +101,6 @@
 
 <script src="../pdf.min.js"></script>
 <script src="supabase.js"></script>
-<script src="equipo.js?v=6"></script>
+<script src="equipo.js?v=7"></script>
 </body>
 </html>

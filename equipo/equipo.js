@@ -10,7 +10,7 @@
 
   function el(tag, cls, texto) { var n = document.createElement(tag); if (cls) n.className = cls; if (texto !== undefined && texto !== null) n.textContent = String(texto); return n; }
   function error(id, t) { var e = $(id); e.textContent = t || ""; e.hidden = !t; }
-  function ver(id) { ["vAcceso", "vDos", "vPanel"].forEach(function (v) { $(v).hidden = v !== id; }); }
+  function ver(id) { ["vAcceso", "vDos", "vClave", "vPanel"].forEach(function (v) { $(v).hidden = v !== id; }); }
   var fmt = new Intl.DateTimeFormat("es-MX", { timeZone: "America/Mexico_City", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
   function fecha(v) { if (!v) return ""; var d = new Date(v); return isNaN(d) ? "" : fmt.format(d) + " h"; }
   function humano(t) { var s = String(t || "").replace(/_/g, " "); return s.charAt(0).toUpperCase() + s.slice(1); }
@@ -103,13 +103,34 @@
   }
   $("salir").addEventListener("click", async function () { await sb.auth.signOut(); $("quien").hidden = true; ver("vAcceso"); });
 
+  // ---------- Contraseña propia, al llegar por enlace
+  var REGLAS = [["Al menos 12 caracteres", function (v) { return v.length >= 12; }], ["Una letra mayúscula", function (v) { return /[A-Z]/.test(v); }], ["Una letra minúscula", function (v) { return /[a-z]/.test(v); }], ["Un número", function (v) { return /\d/.test(v); }], ["Un símbolo, por ejemplo . , ! # $ % * -", function (v) { return /[^A-Za-z0-9]/.test(v); }]];
+  function listaReglas(ul, v1, v2) {
+    ul.textContent = ""; var todo = true;
+    REGLAS.concat([["Las dos contraseñas son iguales", function () { return v1.length > 0 && v1 === v2; }]]).forEach(function (r) { var ok = r[1](v1); if (!ok) todo = false; ul.appendChild(el("li", ok ? "si" : "no", (ok ? "Listo: " : "Falta: ") + r[0])); });
+    return todo;
+  }
+  (function () {
+    var c1 = $("pc1"), c2 = $("pc2"), ul = $("pcReglas"), b = $("pcGuardar");
+    var pinta = function () { b.disabled = !listaReglas(ul, c1.value, c2.value); };
+    c1.addEventListener("input", pinta); c2.addEventListener("input", pinta); pinta();
+    $("pcVer").addEventListener("change", function () { c1.type = c2.type = $("pcVer").checked ? "text" : "password"; });
+    b.addEventListener("click", async function () {
+      error("pcErr", ""); b.disabled = true; b.textContent = "Guardando";
+      try { await api({ accion: "cuenta_clave", clave: c1.value }); c1.value = ""; c2.value = ""; await abrirPanel(); $("eqOk").textContent = "Su contraseña quedó guardada. La próxima vez entre con su correo y esa contraseña."; $("eqOk").hidden = false; }
+      catch (x) { error("pcErr", x.mensaje || "No se pudo guardar. Intente de nuevo."); }
+      finally { b.textContent = "Guardar y entrar"; pinta(); }
+    });
+    $("pcOmitir").addEventListener("click", function () { abrirPanel(); });
+  })();
+
   async function abrirPanel() {
+    if (llegoPorEnlace) { llegoPorEnlace = false; ver("vClave"); return; }
     var u = (await sb.auth.getUser()).data.user;
     $("quienCorreo").textContent = u ? u.email : ""; $("quien").hidden = false;
     ver("vPanel");
     try { desp = await api({ accion: "estado" }, DESPACHO); } catch (e) { desp = { firmante: "", soy_firmante: false, mi_firma: null }; }
     await cargar(); cargarEquipo(); pintarFirma();
-    if (llegoPorEnlace) { llegoPorEnlace = false; ventanaClave(true); }
   }
 
   // ---------- Equipo, correo y contraseña
@@ -159,8 +180,10 @@
     var c1 = el("input"); c1.type = "password"; c1.id = "cl1"; c1.autocomplete = "new-password"; D.appendChild(c1);
     var l2 = el("label", null, "Repítala"); l2.htmlFor = "cl2"; D.appendChild(l2);
     var c2 = el("input"); c2.type = "password"; c2.id = "cl2"; c2.autocomplete = "new-password"; D.appendChild(c2);
+    var ul = el("ul", "reglas"); D.appendChild(ul);
     var e = el("p", "err"); e.hidden = true; D.appendChild(e);
     var b = el("button", "btn", "Guardar contraseña"); b.type = "button"; D.appendChild(b);
+    var pinta = function () { b.disabled = !listaReglas(ul, c1.value, c2.value); }; c1.addEventListener("input", pinta); c2.addEventListener("input", pinta); pinta();
     b.addEventListener("click", async function () {
       e.hidden = true;
       if (c1.value !== c2.value) { e.textContent = "Las dos contraseñas no coinciden."; e.hidden = false; return; }
@@ -169,7 +192,7 @@
         await api({ accion: "cuenta_clave", clave: c1.value }); c1.value = ""; c2.value = "";
         var D2 = abrir("Contraseña guardada"); D2.appendChild(el("p", "okmsg", "Listo. La próxima vez entre con su correo y esta contraseña."));
       } catch (x) { e.textContent = x.mensaje; e.hidden = false; }
-      finally { b.disabled = false; }
+      finally { pinta(); }
     });
   }
 
@@ -293,7 +316,7 @@
   function abrir(titulo) { $("dTitulo").textContent = titulo; $("dCuerpo").textContent = ""; $("velo").hidden = false; return $("dCuerpo"); }
   function cerrar() { $("velo").hidden = true; $("dCuerpo").textContent = ""; }
   $("dCerrar").addEventListener("click", cerrar);
-  $("velo").addEventListener("click", function (e) { if (e.target === $("velo")) cerrar(); });
+  $("velo").addEventListener("click", function (e) { if (e.target === $("velo") && !$("dCuerpo").querySelector("input,textarea,canvas")) cerrar(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("velo").hidden) cerrar(); });
 
   function correoA(c, asunto, cuerpo) { return "mailto:" + c.cliente_correo.replace(/[^a-zA-Z0-9@._+-]/g, "") + "?subject=" + encodeURIComponent(asunto) + "&body=" + encodeURIComponent(cuerpo); }
