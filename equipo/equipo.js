@@ -374,21 +374,27 @@
     try {
       var r = await api({ accion: "equipo_enviar", contrato_id: c.id });
       var envios = r.envios && r.envios.length ? r.envios : [{ n: 1, nombre: c.cliente_nombre, correo: c.cliente_correo, cargo: null, enlace: r.enlace, codigo: r.codigo, expira: r.expira }];
+      // La invitación sale desde el correo del despacho. Si falla, quedan los botones para mandarla a mano.
+      var inv = {}, remitente = "";
+      try { var ri = await api({ accion: "invitar", contrato_id: c.id, envios: envios.map(function (v) { return { n: v.n, enlace: v.enlace, codigo: v.codigo }; }) }, DESPACHO); remitente = ri.remitente || ""; (ri.envios || []).forEach(function (x) { inv[x.n] = x; }); }
+      catch (e) { envios.forEach(function (v) { inv[v.n] = { enviado: false, error: e.mensaje || "No se pudo enviar." }; }); }
       var D = abrir("Enviar " + c.numero);
       D.appendChild(el("p", "nota", "El enlace y el código se muestran una sola vez. Si cierra esta ventana sin enviarlos, genere enlaces nuevos. Los enlaces anteriores de estas personas dejaron de servir." + (envios.length > 1 ? " Cada firmante tiene su propio enlace y su propio código: no los cruce." : "")));
       envios.forEach(function (v) {
         var caja = el("div", "env");
         if (envios.length > 1 || varios(c)) caja.appendChild(el("h3", null, v.nombre + (v.cargo ? ", " + v.cargo : "") + " · " + v.correo));
+        var x = inv[v.n] || {};
+        caja.appendChild(el("p", x.enviado ? "okmsg" : "err", x.enviado ? "Correo enviado a " + (x.para || v.correo) + " desde " + (remitente || "el correo del despacho") + ", con su enlace y su código." : "El correo automático no salió" + (x.error ? " (" + x.error + ")" : "") + ". Mándelo con los botones de abajo."));
         caja.appendChild(el("label", null, "Enlace personal")); caja.appendChild(el("code", null, v.enlace));
         caja.appendChild(el("label", null, "Código de verificación")); caja.appendChild(el("div", "grande", v.codigo));
         caja.appendChild(el("p", "nota", "Vence el " + fecha(v.expira) + "."));
         var texto = "Estimado(a) " + v.nombre + ":\n\n" + (varios(c) ? "El contrato de " + c.cliente_nombre + " con HALTOR está listo para su firma" + (v.cargo ? " como " + v.cargo : "") + "." : "Su contrato con HALTOR está listo para firma.") + "\n\nAbra este enlace desde su celular:\n" + v.enlace + "\n\nSu código de verificación: " + v.codigo + "\n\nEl proceso le pedirá una fotografía de su identificación oficial por ambos lados y una de su rostro. El enlace es personal, vence en 72 horas y no debe compartirse.\n\n" + (envios.length > 1 || varios(c) ? "El contrato quedará firmado cuando hayan firmado todos los representantes y el despacho revise las identificaciones." : "Cuando firme, el despacho revisará su identificación y le enviará su copia.") + "\n\nHALTOR";
         var acc = el("div", "acc");
-        var m = el("a", "btn", "Abrir mi correo con el mensaje listo"); m.href = correoA({ cliente_correo: v.correo }, "Contrato con HALTOR listo para firma", texto); acc.appendChild(m);
+        var m = el("a", "btn" + ((inv[v.n] || {}).enviado ? " claro" : ""), (inv[v.n] || {}).enviado ? "Mandarlo también desde mi correo" : "Abrir mi correo con el mensaje listo"); m.href = correoA({ cliente_correo: v.correo }, "Contrato con HALTOR listo para firma", texto); acc.appendChild(m);
         var cp = el("button", "btn claro", "Copiar mensaje"); cp.type = "button"; cp.addEventListener("click", function () { copiar(texto, cp); }); acc.appendChild(cp);
         caja.appendChild(acc); D.appendChild(caja);
       });
-      D.appendChild(el("p", "nota", "Para más seguridad puede mandar el enlace por correo y el código por otro medio, por ejemplo WhatsApp."));
+      D.appendChild(el("p", "nota", "Si un firmante no encuentra el correo, pídale revisar la carpeta de no deseado. También puede dictarle el código por teléfono o WhatsApp."));
       await cargar();
     } catch (e) { error("lErr", e.mensaje); }
     finally { b.disabled = false; }
