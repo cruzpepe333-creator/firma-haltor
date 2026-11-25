@@ -13,6 +13,7 @@
     $("top").hidden = !n; $("gbar").hidden = !n;
     if (n) { $("stepno").textContent = "PASO " + n + " DE 5"; $("gbarI").style.width = (n / 5 * 100) + "%"; }
     window.scrollTo(0, 0);
+    if (id === "s1" || id === "s3" || id === "s4") setTimeout(cargarDetector, id === "s1" ? 1200 : 300);
   }
   function fin(titulo, mensaje) {
     $("s0spin").hidden = true; $("s0t").textContent = titulo; $("s0m").textContent = mensaje; show("s0");
@@ -191,11 +192,11 @@
       r.nitidez = s2 / n - (s1 / n) * (s1 / n);
       if (buscarRostro && detectorListo) {
         var det = await Promise.race([
-          window.faceapi.detectAllFaces(im, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.45 })),
-          new Promise(function (ok) { setTimeout(function () { ok(null); }, 12000); })
+          window.faceapi.detectAllFaces(buscarRostro === "grande" ? c : im, new window.faceapi.TinyFaceDetectorOptions({ inputSize: buscarRostro === "grande" ? 224 : 416, scoreThreshold: 0.45 })),
+          new Promise(function (ok) { setTimeout(function () { ok(null); }, 6000); })
         ]);
         if (det) {
-          var minimo = (buscarRostro === "grande" ? 0.18 : 0.04) * Math.min(im.naturalWidth, im.naturalHeight);
+          var minimo = buscarRostro === "grande" ? 0.18 * Math.min(w, h) : 0.04 * Math.min(im.naturalWidth, im.naturalHeight);
           r.rostros = det.filter(function (x) { return x.box.width >= minimo; }).length;
         }
       }
@@ -252,52 +253,28 @@
   }
   alElegir("ineF", "ine_frente", "dropF"); alElegir("ineR", "ine_reverso", "dropR"); alElegir("selfieArchivo", "rostro", "dropS");
 
-  // Cámara dentro de la página: las tres fotografías seguidas, un toque por cada una.
-  var flujo = null, lado = "", cola = [], camTipo = null, sinCamara = !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  var CAM = {
-    ine_frente: { drop: "dropF", archivo: "ineF", t: "Frente de su identificación", p: "Colóquela dentro del recuadro, completa, con buena luz y sin reflejos." },
-    ine_reverso: { drop: "dropR", archivo: "ineR", t: "Reverso de su identificación", p: "Voltee su identificación y colóquela dentro del recuadro." },
-    rostro: { drop: "dropS", archivo: "selfieArchivo", t: "Mire a la cámara", p: "Su rostro dentro del recuadro, sin lentes oscuros ni gorra." }
-  };
-  function apagar() { if (flujo) { flujo.getTracks().forEach(function (t) { t.stop(); }); flujo = null; } lado = ""; $("video").srcObject = null; }
-  function pendientes() { return ["ine_frente", "ine_reverso", "rostro"].filter(function (t) { return !fotos[t] && !$(CAM[t].drop).classList.contains("subiendo"); }); }
-  async function camara(tipos) {
-    cola = tipos.slice();
-    if (!cola.length) return;
-    if (sinCamara) { $(CAM[cola[0]].archivo).click(); cola = []; return; }
-    await siguienteCam();
-  }
-  async function siguienteCam() {
-    if (!cola.length) { apagar(); show("s4"); return; }
-    camTipo = cola[0]; var k = CAM[camTipo], quiero = camTipo === "rostro" ? "user" : "environment";
-    $("camTitulo").textContent = k.t; $("camTexto").textContent = k.p; $("camCuenta").textContent = cola.length > 1 ? "Faltan " + cola.length + " fotografías" : "Última fotografía";
-    $("camCaja").className = "camara " + (quiero === "user" ? "espejo rostro" : "credencial");
-    if (!flujo || lado !== quiero) {
-      apagar(); $("tomar").disabled = true;
-      try {
-        flujo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: quiero === "user" ? "user" : { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
-        lado = quiero; $("video").srcObject = flujo;
-      } catch (e) {
-        // Sin permiso de cámara en la página: se usa la cámara del teléfono, foto por foto.
-        sinCamara = true; cola = []; apagar(); show("s4");
-        error("idErr", "No fue posible abrir la cámara aquí. Toque cada recuadro para tomar la fotografía con la cámara de su teléfono.");
-        return;
-      }
+  // Cámara para el rostro. La pantalla aparece al instante y la cámara se enciende en cuanto el teléfono la entrega.
+  var flujo = null, sinCamara = !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  function apagar() { if (flujo) { flujo.getTracks().forEach(function (t) { t.stop(); }); flujo = null; } $("video").srcObject = null; }
+  $("dropS").addEventListener("click", async function () {
+    if (sinCamara) { $("selfieArchivo").click(); return; }
+    var b = $("tomar"); b.disabled = true; b.textContent = "Abriendo la cámara"; show("s4c");
+    try {
+      flujo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
+      $("video").srcObject = flujo; b.disabled = false; b.textContent = "Tomar fotografía";
+    } catch (e) {
+      // Sin permiso de cámara en la página: se usa la cámara del teléfono.
+      sinCamara = true; apagar(); b.textContent = "Tomar fotografía"; show("s4");
+      avisoFoto("rostro", "No fue posible abrir la cámara aquí. Toque de nuevo el recuadro para usar la cámara de su teléfono.");
     }
-    show("s4c"); $("tomar").disabled = false;
-  }
-  $("camTodo").addEventListener("click", function () { camara(pendientes()); });
-  $("dropS").addEventListener("click", function () { camara(["rostro"]); });
-  ["ine_frente", "ine_reverso"].forEach(function (t) {
-    $(CAM[t].archivo).addEventListener("click", function (ev) { if (sinCamara) return; ev.preventDefault(); camara([t]); });
   });
-  $("cancelarCam").addEventListener("click", function () { cola = []; apagar(); show("s4"); });
+  $("cancelarCam").addEventListener("click", function () { apagar(); show("s4"); });
   $("tomar").addEventListener("click", function () {
     var v = $("video");
-    if (!v.videoWidth || !camTipo) return;
-    var t = camTipo, url = reducir(v, v.videoWidth, v.videoHeight, t === "rostro" ? 1400 : 2000);
-    cola.shift(); encolarFoto(t, CAM[t].drop, url, "camara");
-    siguienteCam();
+    if (!v.videoWidth) return;
+    var url = reducir(v, v.videoWidth, v.videoHeight, 1400);
+    apagar(); show("s4");
+    encolarFoto("rostro", "dropS", url, "camara");
   });
   window.addEventListener("pagehide", apagar);
   $("go4").addEventListener("click", function () { if (datos && datos.repetir && cargado === false && leidoAntes) { show("s6"); prepararFirma(); return; } show("s5"); cargarContrato(); });

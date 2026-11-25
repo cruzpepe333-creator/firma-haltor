@@ -103,8 +103,7 @@
   <!-- 4. Identificación -->
   <section class="screen" id="s4" hidden>
     <h1>Su identificación</h1>
-    <p class="lead">Tome una fotografía de su identificación oficial por ambos lados y una de su rostro en este momento. Son tres fotografías seguidas, un toque por cada una.</p>
-    <button class="btn gold" id="camTodo" type="button">Tomar las tres fotografías</button>
+    <p class="lead">Tome una fotografía de su identificación oficial por ambos lados y una de su rostro en este momento.</p>
     <div class="ids">
       <label class="drop" for="ineF" id="dropF"><input id="ineF" type="file" accept="image/*" capture="environment"><span>Frente</span><small>Toque para fotografiar</small></label>
       <label class="drop" for="ineR" id="dropR"><input id="ineR" type="file" accept="image/*" capture="environment"><span>Reverso</span><small>Toque para fotografiar</small></label>
@@ -121,7 +120,7 @@
   <section class="screen dark" id="s4c" hidden>
     <h1 id="camTitulo">Mire a la cámara</h1>
     <p class="lead" id="camTexto">Coloque su rostro dentro del recuadro, sin lentes oscuros ni gorra.</p>
-    <div class="camara" id="camCaja"><video id="video" playsinline autoplay muted></video><i class="guia" aria-hidden="true"></i></div>
+    <div class="camara espejo rostro" id="camCaja"><video id="video" playsinline autoplay muted></video><i class="guia" aria-hidden="true"></i></div>
     <p class="hint" id="camCuenta"></p>
     <div class="spacer"></div>
     <button class="btn gold" id="tomar" type="button">Tomar fotografía</button>
@@ -193,6 +192,6 @@
 </main>
 </div>
 <script src="pdf.min.js"></script>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>
