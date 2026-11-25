@@ -8,7 +8,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://khkzwhsbhfydcshzggos.supabase.co; base-uri 'none'; form-action 'none'">
 <title>Firma de contrato · HALTOR</title>
 <link rel="stylesheet" href="estilos.css">
-<link rel="stylesheet" href="extra.css?v=3">
+<link rel="stylesheet" href="extra.css?v=4">
 </head>
 <body>
 <div class="stage">
@@ -103,7 +103,8 @@
   <!-- 4. Identificación -->
   <section class="screen" id="s4" hidden>
     <h1>Su identificación</h1>
-    <p class="lead">Tome una fotografía de su identificación oficial por ambos lados y una de su rostro en este momento.</p>
+    <p class="lead">Tome una fotografía de su identificación oficial por ambos lados y una de su rostro en este momento. Son tres fotografías seguidas, un toque por cada una.</p>
+    <button class="btn gold" id="camTodo" type="button">Tomar las tres fotografías</button>
     <div class="ids">
       <label class="drop" for="ineF" id="dropF"><input id="ineF" type="file" accept="image/*" capture="environment"><span>Frente</span><small>Toque para fotografiar</small></label>
       <label class="drop" for="ineR" id="dropR"><input id="ineR" type="file" accept="image/*" capture="environment"><span>Reverso</span><small>Toque para fotografiar</small></label>
@@ -118,9 +119,10 @@
 
   <!-- 4b. Cámara -->
   <section class="screen dark" id="s4c" hidden>
-    <h1>Mire a la cámara</h1>
-    <p class="lead">Coloque su rostro dentro del recuadro, sin lentes oscuros ni gorra.</p>
-    <div class="camara"><video id="video" playsinline autoplay muted></video></div>
+    <h1 id="camTitulo">Mire a la cámara</h1>
+    <p class="lead" id="camTexto">Coloque su rostro dentro del recuadro, sin lentes oscuros ni gorra.</p>
+    <div class="camara" id="camCaja"><video id="video" playsinline autoplay muted></video><i class="guia" aria-hidden="true"></i></div>
+    <p class="hint" id="camCuenta"></p>
     <div class="spacer"></div>
     <button class="btn gold" id="tomar" type="button">Tomar fotografía</button>
     <button class="link claro" id="cancelarCam" type="button">Cancelar</button>
@@ -191,6 +193,6 @@
 </main>
 </div>
 <script src="pdf.min.js"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

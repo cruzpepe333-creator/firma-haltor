@@ -15,10 +15,19 @@
 .drop.lista span,.drop.lista small{display:none}
 .drop.subiendo{opacity:.6}
 .camara{margin-top:20px;border-radius:14px;overflow:hidden;border:2px solid var(--gold);background:#000;aspect-ratio:3/4;max-height:460px;align-self:center;width:100%;max-width:345px}
-.camara video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.camara{position:relative}
+.camara video{width:100%;height:100%;object-fit:cover}
+.camara.espejo video{transform:scaleX(-1)}
+.camara .guia{position:absolute;border:2px dashed rgba(255,255,255,.85);pointer-events:none}
+.camara.credencial{aspect-ratio:4/3;max-width:460px}
+.camara.credencial .guia{left:6%;right:6%;top:50%;aspect-ratio:1.586;transform:translateY(-50%);border-radius:10px}
+.camara.rostro .guia{left:18%;right:18%;top:10%;bottom:14%;border-radius:50%}
+#camTodo{margin-top:14px}
 .link.claro{color:#C9D1DD;align-self:center}
 .btn.enlace{text-decoration:none}
 .pad{height:200px}
 #s0 .spin[hidden]{display:none}
 .aviso-rep{margin-top:14px;border-left:4px solid var(--gold)}
 #s9 .card{margin-top:22px}
+
+#idErr{white-space:pre-line}

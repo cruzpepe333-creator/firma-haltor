@@ -412,6 +412,22 @@
     return { t: p.join(" · ") + ".", alerta: alerta };
   }
 
+  // Dónde va la firma de cada firmante: encima de su nombre en el contrato. Si algo falla, el servidor la deja al margen y en la hoja de evidencias.
+  async function lugares(c, lista) {
+    try {
+      var r = await api({ accion: "equipo_enlace", contrato_id: c.id, cual: "original" });
+      var resp = await fetch(r.url, { cache: "no-store" }); if (!resp.ok) return [];
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "../pdf.worker.min.js";
+      var doc = await window.pdfjsLib.getDocument({ data: new Uint8Array(await resp.arrayBuffer()) }).promise, out = [];
+      for (var i = 0; i < lista.length; i++) {
+        var f = lista[i], h = await ubicarNombre(doc, f.nombre || c.cliente_nombre); if (!h) continue;
+        var prop = 3; if (f.firma) { var im = new Image(); await new Promise(function (ok) { im.onload = ok; im.onerror = ok; im.src = f.firma; }); if (im.naturalWidth && im.naturalHeight) prop = im.naturalWidth / im.naturalHeight; }
+        var ancho = Math.min(0.3, 0.075 * h.H * prop / h.W), alto = ancho * h.W / prop;
+        out.push({ n: f.n || 1, pagina: h.pagina, cx: Math.min(0.95, Math.max(0.05, h.x / h.W)), cy: Math.min(0.97, Math.max(0.03, (h.y - 12 - alto * 0.45) / h.H)), ancho: ancho });
+      }
+      return out;
+    } catch (e) { return []; }
+  }
   var ESTADO_FIRMANTE = { sin_enlace: "Sin enlace todavía", abierta: "Aún no firma", bloqueada: "Enlace bloqueado por intentos", firmando: "Firmando", en_revision: "Ya firmó, falta su revisión", firmada: "Aprobado", anulada: "Enlace anulado" };
   async function revisar(c, b) {
     b.disabled = true;
@@ -470,10 +486,11 @@
       ba.addEventListener("click", async function () {
         botones.forEach(function (x) { x.disabled = true; }); ba.textContent = "Cerrando el contrato";
         try {
-          var ra = await api({ accion: "equipo_aprobar", contrato_id: c.id }); await cargar();
+          var col = await lugares(c, lista); var ra = await api({ accion: "equipo_aprobar", contrato_id: c.id, colocacion: col }); await cargar();
+          var nota = col.length === lista.length ? "Cada firma quedó estampada sobre el nombre de su firmante y al margen de las demás hojas." : "No se encontró en el PDF el nombre de " + (lista.length - col.length) + " firmante(s): su firma quedó al margen de las hojas y en la hoja de evidencias.";
           if (ra.correo && ra.correo.enviado) {
             var D3 = abrir(c.numero);
-            D3.appendChild(el("p", "okmsg", "Contrato aprobado y cerrado."));
+            D3.appendChild(el("p", "okmsg", "Contrato aprobado y cerrado.")); D3.appendChild(el("p", "nota", nota));
             D3.appendChild(el("p", "nota", "Se envió a " + ra.correo.para + " el contrato firmado con la huella, con copia a: " + (ra.correo.cc || []).join(", ") + " y a la cuenta del despacho."));
             var bx = el("button", "btn claro", "Descargar el contrato firmado"); bx.type = "button"; bx.addEventListener("click", function () { bajar(c, "firmado", bx); }); D3.appendChild(bx);
             return;

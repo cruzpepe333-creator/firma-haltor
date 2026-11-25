@@ -143,7 +143,7 @@
       var s = document.createElement("i"); s.className = "ok"; s.textContent = "Recibida"; d.appendChild(s);
     }
   }
-  function revisarFotos() { $("go4").disabled = !(fotos.ine_frente && fotos.ine_reverso && fotos.rostro); }
+  function revisarFotos() { var listo = fotos.ine_frente && fotos.ine_reverso && fotos.rostro; $("go4").disabled = !listo; var b = $("camTodo"); if (b) { b.hidden = !!listo; b.textContent = fotos.ine_frente || fotos.ine_reverso || fotos.rostro ? "Tomar las fotografías que faltan" : "Tomar las tres fotografías"; } }
   function reducir(fuente, ancho, alto, max) {
     var e = Math.min(1, max / Math.max(ancho, alto));
     var c = document.createElement("canvas"); c.width = Math.round(ancho * e); c.height = Math.round(alto * e);
@@ -211,53 +211,93 @@
     if (tipo === "ine_frente" && a.rostros === 0) return "No se distingue la fotografía de su identificación. Verifique que sea el frente de su credencial, completa y bien enfocada.";
     return "";
   }
+  var NOMBRE_FOTO = { ine_frente: "Frente de la identificación", ine_reverso: "Reverso de la identificación", rostro: "Fotografía del rostro" };
+  // Las fotografías se revisan y se suben una tras otra, sin detener al cliente.
+  var filaSubida = Promise.resolve(), avisos = {};
+  function avisoFoto(tipo, texto) {
+    if (texto) avisos[tipo] = texto; else delete avisos[tipo];
+    error("idErr", Object.keys(avisos).map(function (t) { return NOMBRE_FOTO[t] + ": " + avisos[t]; }).join("\n"));
+  }
+  function encolarFoto(tipo, dropId, dataUrl, origen) {
+    var d = $(dropId); fotos[tipo] = false; marcar(dropId, false); avisoFoto(tipo, ""); d.classList.add("subiendo");
+    var im = document.createElement("img"); im.alt = ""; im.src = dataUrl; d.appendChild(im); revisarFotos();
+    filaSubida = filaSubida.then(function () { return enviarFoto(tipo, dropId, dataUrl, origen); }).catch(function () { /* cada foto informa su propio error */ });
+    return filaSubida;
+  }
   async function enviarFoto(tipo, dropId, dataUrl, origen) {
-    var d = $(dropId); d.classList.add("subiendo"); error("idErr", "");
+    var d = $(dropId); d.classList.add("subiendo");
     try {
       var a = await analizar(dataUrl, tipo === "rostro" ? "grande" : tipo === "ine_frente" ? "chico" : null);
       var falla = problema(tipo, a), forzada = false;
       if (falla) {
         fallos[tipo]++;
-        if (fallos[tipo] < 3) { error("idErr", falla); return; }
+        if (fallos[tipo] < 2) { marcar(dropId, false); avisoFoto(tipo, falla + " Toque ese recuadro para repetirla."); return; }
         forzada = true;
       }
       await api({ accion: "subir", tipo: tipo, imagen: dataUrl, auto: { luz: a.luz, nitidez: a.nitidez, rostros: a.rostros, origen: origen || "archivo", forzada: forzada } });
-      if (forzada) error("idErr", "Guardamos esta fotografía, pero el despacho la revisará y puede pedirle que la repita.");
+      avisoFoto(tipo, forzada ? "La guardamos, pero el despacho la revisará y puede pedirle que la repita." : "");
       fotos[tipo] = true; marcar(dropId, true, dataUrl);
     } catch (e) {
-      if (!fatal(e) && !sesionVencida(e)) error("idErr", e.mensaje);
+      marcar(dropId, false);
+      if (!fatal(e) && !sesionVencida(e)) avisoFoto(tipo, e.mensaje);
     } finally { d.classList.remove("subiendo"); revisarFotos(); }
   }
   function alElegir(inputId, tipo, dropId) {
     $(inputId).addEventListener("change", async function (ev) {
       var f = ev.target.files && ev.target.files[0]; ev.target.value = "";
       if (!f) return;
-      try { await enviarFoto(tipo, dropId, await leerArchivo(f)); }
+      try { await encolarFoto(tipo, dropId, await leerArchivo(f)); }
       catch (e) { error("idErr", "No se pudo leer esa imagen. Tome la fotografía de nuevo."); }
     });
   }
   alElegir("ineF", "ine_frente", "dropF"); alElegir("ineR", "ine_reverso", "dropR"); alElegir("selfieArchivo", "rostro", "dropS");
 
-  var flujo = null;
-  function apagar() { if (flujo) { flujo.getTracks().forEach(function (t) { t.stop(); }); flujo = null; } $("video").srcObject = null; }
-  $("dropS").addEventListener("click", async function () {
-    error("idErr", "");
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $("selfieArchivo").click(); return; }
-    try {
-      flujo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
-      $("video").srcObject = flujo; show("s4c");
-    } catch (e) {
-      // Sin permiso de cámara: se usa la cámara del sistema.
-      $("selfieArchivo").click();
+  // Cámara dentro de la página: las tres fotografías seguidas, un toque por cada una.
+  var flujo = null, lado = "", cola = [], camTipo = null, sinCamara = !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  var CAM = {
+    ine_frente: { drop: "dropF", archivo: "ineF", t: "Frente de su identificación", p: "Colóquela dentro del recuadro, completa, con buena luz y sin reflejos." },
+    ine_reverso: { drop: "dropR", archivo: "ineR", t: "Reverso de su identificación", p: "Voltee su identificación y colóquela dentro del recuadro." },
+    rostro: { drop: "dropS", archivo: "selfieArchivo", t: "Mire a la cámara", p: "Su rostro dentro del recuadro, sin lentes oscuros ni gorra." }
+  };
+  function apagar() { if (flujo) { flujo.getTracks().forEach(function (t) { t.stop(); }); flujo = null; } lado = ""; $("video").srcObject = null; }
+  function pendientes() { return ["ine_frente", "ine_reverso", "rostro"].filter(function (t) { return !fotos[t] && !$(CAM[t].drop).classList.contains("subiendo"); }); }
+  async function camara(tipos) {
+    cola = tipos.slice();
+    if (!cola.length) return;
+    if (sinCamara) { $(CAM[cola[0]].archivo).click(); cola = []; return; }
+    await siguienteCam();
+  }
+  async function siguienteCam() {
+    if (!cola.length) { apagar(); show("s4"); return; }
+    camTipo = cola[0]; var k = CAM[camTipo], quiero = camTipo === "rostro" ? "user" : "environment";
+    $("camTitulo").textContent = k.t; $("camTexto").textContent = k.p; $("camCuenta").textContent = cola.length > 1 ? "Faltan " + cola.length + " fotografías" : "Última fotografía";
+    $("camCaja").className = "camara " + (quiero === "user" ? "espejo rostro" : "credencial");
+    if (!flujo || lado !== quiero) {
+      apagar(); $("tomar").disabled = true;
+      try {
+        flujo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: quiero === "user" ? "user" : { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
+        lado = quiero; $("video").srcObject = flujo;
+      } catch (e) {
+        // Sin permiso de cámara en la página: se usa la cámara del teléfono, foto por foto.
+        sinCamara = true; cola = []; apagar(); show("s4");
+        error("idErr", "No fue posible abrir la cámara aquí. Toque cada recuadro para tomar la fotografía con la cámara de su teléfono.");
+        return;
+      }
     }
+    show("s4c"); $("tomar").disabled = false;
+  }
+  $("camTodo").addEventListener("click", function () { camara(pendientes()); });
+  $("dropS").addEventListener("click", function () { camara(["rostro"]); });
+  ["ine_frente", "ine_reverso"].forEach(function (t) {
+    $(CAM[t].archivo).addEventListener("click", function (ev) { if (sinCamara) return; ev.preventDefault(); camara([t]); });
   });
-  $("cancelarCam").addEventListener("click", function () { apagar(); show("s4"); });
-  $("tomar").addEventListener("click", async function () {
+  $("cancelarCam").addEventListener("click", function () { cola = []; apagar(); show("s4"); });
+  $("tomar").addEventListener("click", function () {
     var v = $("video");
-    if (!v.videoWidth) return;
-    var url = reducir(v, v.videoWidth, v.videoHeight, 1400);
-    apagar(); show("s4");
-    await enviarFoto("rostro", "dropS", url, "camara");
+    if (!v.videoWidth || !camTipo) return;
+    var t = camTipo, url = reducir(v, v.videoWidth, v.videoHeight, t === "rostro" ? 1400 : 2000);
+    cola.shift(); encolarFoto(t, CAM[t].drop, url, "camara");
+    siguienteCam();
   });
   window.addEventListener("pagehide", apagar);
   $("go4").addEventListener("click", function () { if (datos && datos.repetir && cargado === false && leidoAntes) { show("s6"); prepararFirma(); return; } show("s5"); cargarContrato(); });
