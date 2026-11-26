@@ -220,7 +220,7 @@
       else if (c.estado === "borrador") { if (c.autorizado_en) a.firstChild.textContent = "Autorizado, listo para enviar"; boton("Enviar al cliente", "", enviar); }
       if (c.estado === "enviado") { if (varios(c)) boton("Ver avance de firmas", "sec", revisar); boton(varios(c) ? "Enlaces nuevos para quien falta" : "Generar enlace nuevo", "claro", enviar); }
       if (c.estado === "firmado_cliente") boton("Revisar", "sec", revisar);
-      if (c.estado === "firmado") boton("Descargar firmado", "", function (c, b) { bajar(c, "firmado", b); });
+      if (c.estado === "firmado") { boton("Expediente completo, con evidencias", "", function (c, b) { bajar(c, "firmado", b); }); boton("Copia que recibió el cliente", "claro", function (c, b) { bajar(c, "copia", b); }); }
       boton("Detalle", "claro", detalle);
       it.appendChild(a); L.appendChild(it);
     });
@@ -497,8 +497,9 @@
           if (ra.correo && ra.correo.enviado) {
             var D3 = abrir(c.numero);
             D3.appendChild(el("p", "okmsg", "Contrato aprobado y cerrado.")); D3.appendChild(el("p", "nota", nota));
-            D3.appendChild(el("p", "nota", "Se envió a " + ra.correo.para + " el contrato firmado con la huella, con copia a: " + (ra.correo.cc || []).join(", ") + " y a la cuenta del despacho."));
-            var bx = el("button", "btn claro", "Descargar el contrato firmado"); bx.type = "button"; bx.addEventListener("click", function () { bajar(c, "firmado", bx); }); D3.appendChild(bx);
+            D3.appendChild(el("p", "nota", "Se envió a " + ra.correo.para + (ra.correo.completa === false ? " solo el contrato firmado, sin las hojas de evidencias, con su huella y con copia a: " : " el contrato firmado con la huella, con copia a: ") + (ra.correo.cc || []).join(", ") + " y a la cuenta del despacho."));
+            var bx = el("button", "btn claro", "Descargar el expediente completo"); bx.type = "button"; bx.addEventListener("click", function () { bajar(c, "firmado", bx); }); D3.appendChild(bx);
+            var by = el("button", "btn claro", "Descargar la copia del cliente"); by.type = "button"; by.addEventListener("click", function () { bajar(c, "copia", by); }); D3.appendChild(document.createTextNode(" ")); D3.appendChild(by);
             return;
           }
           var D2 = aviso(lista.map(function (f) { return f.correo || c.cliente_correo; }).join(","), "Su contrato con HALTOR quedó firmado", "Estimado(a) " + lista.map(function (f) { return f.nombre || c.cliente_nombre; }).join(" y ") + ":\n\nRevisamos su identificación y su firma, y el contrato quedó aceptado.\n\nPara descargar su copia, abra el mismo enlace que le enviamos y escriba el mismo código de verificación. Podrá hacerlo durante los próximos 30 días.\n\nHALTOR", "Contrato aprobado y cerrado. El correo automático no salió" + (ra.correo && ra.correo.error ? " (" + ra.correo.error + ")" : "") + ". Avise desde su correo y adjunte el PDF.");
@@ -519,7 +520,7 @@
     var acc = el("div", "acc");
     var bo = el("button", "btn claro", "Descargar PDF original"); bo.type = "button"; bo.addEventListener("click", function () { bajar(c, "original", bo); }); acc.appendChild(bo);
     if (c.estado === "firmado") {
-      var bf = el("button", "btn", "Descargar PDF firmado"); bf.type = "button"; bf.addEventListener("click", function () { bajar(c, "firmado", bf); }); acc.appendChild(bf);
+      var bf = el("button", "btn", "Descargar el expediente completo"); bf.type = "button"; bf.addEventListener("click", function () { bajar(c, "firmado", bf); }); acc.appendChild(bf);
       var bm = el("button", "btn claro", "Reenviar correo al cliente y al equipo"); bm.type = "button";
       bm.addEventListener("click", async function () {
         bm.disabled = true;
