@@ -487,17 +487,32 @@
       });
       var A = el("div", "firmante-rev"); A.appendChild(el("h3", null, "Aprobar"));
       A.appendChild(el("p", "nota", todos ? "Cierra el contrato con su nombre como revisor" + (lista.length > 1 ? ", con las evidencias de todos los firmantes" : "") + ". No se puede deshacer." : "Se podrá aprobar cuando hayan firmado todos los firmantes."));
+      var sinL = el("label", "nota"), sinC = document.createElement("input"); sinC.type = "checkbox"; sinL.appendChild(sinC); sinL.appendChild(document.createTextNode(" No enviar todavía el correo al cliente: quiero revisar primero su copia.")); sinL.style.display = "block"; A.appendChild(sinL);
       var ba = el("button", "btn", "Aprobar y cerrar el contrato"); ba.type = "button"; ba.disabled = !todos; A.appendChild(ba); var ea = el("p", "err"); ea.hidden = true; A.appendChild(ea);
       D.appendChild(A); botones.push(ba);
       ba.addEventListener("click", async function () {
         botones.forEach(function (x) { x.disabled = true; }); ba.textContent = "Cerrando el contrato";
         try {
-          var col = await lugares(c, lista); var ra = await api({ accion: "equipo_aprobar", contrato_id: c.id, colocacion: col }); await cargar();
-          var nota = col.length === lista.length ? "Cada firma quedó estampada sobre el nombre de su firmante y al margen de las demás hojas." : "No se encontró en el PDF el nombre de " + (lista.length - col.length) + " firmante(s): su firma quedó al margen de las hojas y en la hoja de evidencias.";
+          var col = await lugares(c, lista); var ra = await api({ accion: "equipo_aprobar", contrato_id: c.id, colocacion: col, sin_correo: sinC.checked }); await cargar();
+          var nota = col.length === lista.length ? "Cada firma quedó estampada sobre el nombre de su firmante y al margen de las demás hojas." : "No se encontró en el PDF el nombre de " + (lista.length - col.length) + " firmante(s): su firma quedó al margen de las hojas y en la constancia de firma.";
+          if (sinC.checked) {
+            var D4 = abrir(c.numero);
+            D4.appendChild(el("p", "okmsg", "Contrato aprobado y cerrado. El correo al cliente todavía no se ha enviado.")); D4.appendChild(el("p", "nota", nota));
+            D4.appendChild(el("p", "nota", "Descargue la copia del cliente y revísela. Cuando esté conforme, envíe el correo con el botón de abajo. También puede enviarlo después desde el detalle del contrato, con \"Reenviar correo al cliente y al equipo\"."));
+            var b1 = el("button", "btn claro", "Descargar la copia del cliente"); b1.type = "button"; b1.addEventListener("click", function () { bajar(c, "copia", b1); }); D4.appendChild(b1);
+            var b2 = el("button", "btn claro", "Descargar el expediente completo"); b2.type = "button"; b2.addEventListener("click", function () { bajar(c, "firmado", b2); }); D4.appendChild(document.createTextNode(" ")); D4.appendChild(b2);
+            var b3 = el("button", "btn", "Enviar el correo al cliente y al equipo"); b3.type = "button"; D4.appendChild(document.createTextNode(" ")); D4.appendChild(b3);
+            b3.addEventListener("click", async function () {
+              b3.disabled = true; b3.textContent = "Enviando";
+              try { var r3 = await api({ accion: "equipo_reenviar_correo", contrato_id: c.id }); b3.textContent = r3.correo && r3.correo.enviado ? "Correo enviado a " + r3.correo.para : "No salió: " + ((r3.correo && r3.correo.error) || "error"); if (!(r3.correo && r3.correo.enviado)) b3.disabled = false; }
+              catch (x) { b3.textContent = x.mensaje; b3.disabled = false; }
+            });
+            return;
+          }
           if (ra.correo && ra.correo.enviado) {
             var D3 = abrir(c.numero);
             D3.appendChild(el("p", "okmsg", "Contrato aprobado y cerrado.")); D3.appendChild(el("p", "nota", nota));
-            D3.appendChild(el("p", "nota", "Se envió a " + ra.correo.para + (ra.correo.completa === false ? " solo el contrato firmado, sin las hojas de evidencias, con su huella y con copia a: " : " el contrato firmado con la huella, con copia a: ") + (ra.correo.cc || []).join(", ") + " y a la cuenta del despacho."));
+            D3.appendChild(el("p", "nota", "Se envió a " + ra.correo.para + (ra.correo.completa === false ? " el contrato firmado con la constancia de firma de cada firmante, sin fotografías, con su huella y con copia a: " : " el contrato firmado con la huella, con copia a: ") + (ra.correo.cc || []).join(", ") + " y a la cuenta del despacho."));
             var bx = el("button", "btn claro", "Descargar el expediente completo"); bx.type = "button"; bx.addEventListener("click", function () { bajar(c, "firmado", bx); }); D3.appendChild(bx);
             var by = el("button", "btn claro", "Descargar la copia del cliente"); by.type = "button"; by.addEventListener("click", function () { bajar(c, "copia", by); }); D3.appendChild(document.createTextNode(" ")); D3.appendChild(by);
             return;
